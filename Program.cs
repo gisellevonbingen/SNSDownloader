@@ -1,36 +1,37 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.Http;
 using System.Reflection;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Newtonsoft.Json.Linq;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace TwitterVideoDownloader
 {
     public class Program
     {
         public static string TweetIdGroup { get; } = "tweet_id";
-        public static Regex TweetStatusPattern { get; } = new Regex($"https:\\/\\/twitter\\.com\\/(?<user_id>.+)\\/status\\/(?<{TweetIdGroup}>.+)");
+        public static Regex XStatusPattern { get; } = new Regex($"https:\\/\\/x\\.com\\/(?<user_id>.+)\\/status\\/(?<{TweetIdGroup}>\\d+)(\\?.+)?");
+        public static Regex TweetStatusPattern { get; } = new Regex($"https:\\/\\/twitter\\.com\\/(?<user_id>.+)\\/status\\/(?<{TweetIdGroup}>\\d+)(\\?.+)?");
         public static Regex TweetDetailPattern { get; } = new Regex("https:\\/\\/twitter\\.com\\/i\\/api\\/graphql\\/\\w+\\/TweetDetail");
-        public static Regex VidPattern { get; } = new Regex(".+/vid\\/(?<size>\\w+)\\/.*");
-        public static Regex PlPattern { get; } = new Regex(".+/pl\\/(?<size>\\w+)\\/.*");
+        public static Regex SizePattern { get; } = new Regex("(?<width>\\d+)x(?<height>\\d+)");
         public static string MapUriPrefix { get; } = "#EXT-X-MAP:URI";
         public static string OutputDirectory { get; } = "./Output";
         public static int DownloadBufferSize { get; } = 16 * 1024;
+        public static Encoding UTF8WithoutBOM = new UTF8Encoding(false);
 
         public static void Main()
         {
-            var outputDirectory = Directory.CreateDirectory(OutputDirectory);
-            outputDirectory.Create();
-
-            var mediaList = new List<TwitterExtendedMediaEntity>();
+            var tweetList = new List<TwitterTwitInfo>();
             using var are = new AutoResetEvent(false);
 
             var driverService = ChromeDriverService.CreateDefaultService(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
@@ -38,104 +39,160 @@ namespace TwitterVideoDownloader
             driverService.SuppressInitialDiagnosticInformation = true;
 
             var options = new ChromeOptions();
-            options.AddArgument("--headless");
-            options.AddArgument("--silent");
+            //options.AddArgument("--headless");
+            //options.AddArgument("--silent");
             Console.WriteLine("Driver starting");
             using var driver = new ChromeDriver(driverService, options);
+            driver.Navigate().GoToUrl("https://twitter.com/");
+
+            Console.WriteLine("First, login twitter account");
+            Console.Write("Press enter to start after login");
+            Console.ReadLine();
+
             var network = driver.Manage().Network;
             network.StartMonitoring();
-            network.NetworkResponseReceived += (sender, e) => OnNetworkResponseReceived(e, are, mediaList);
+            network.NetworkResponseReceived += (sender, e) => OnNetworkResponseReceived(e, are, tweetList);
 
-            while (true)
+            var directories = Directory.GetDirectories(Directory.GetCurrentDirectory());
+
+            for (int di = 0; di < directories.Length; di++)
             {
-                Console.WriteLine("Enter tweet url");
-                Console.Write("> ");
-                var url = Console.ReadLine();
+                var directory = directories[di];
+                var inputFile = Path.Combine(directory, "tweets.json");
 
-                if (url == null || url.Equals(":exit", StringComparison.OrdinalIgnoreCase) == true)
+                if (File.Exists(inputFile) == false)
                 {
-                    break;
-                }
-
-                var statusMatch = TweetStatusPattern.Match(url);
-
-                if (statusMatch.Success == false)
-                {
-                    Console.WriteLine("Wrong tweet url");
                     continue;
                 }
 
-                var tweetId = statusMatch.Groups[TweetIdGroup].Value;
+                var urls = JArray.Parse(File.ReadAllText(inputFile)).Select(v => v.Value<string>()).ToList();
 
-                mediaList.Clear();
-                driver.Navigate().GoToUrl(url);
-                are.WaitOne();
-
-                if (mediaList.Count == 0)
+                for (int ui = 0; ui < urls.Count;)
                 {
-                    Console.WriteLine("Media not found");
-                }
-                else
-                {
-                    Console.WriteLine($"Media Found : {mediaList.Count}");
-                    Console.WriteLine();
+                    var url = urls[ui];
+                    var statusMatch = TweetStatusPattern.Match(url);
 
-                    var downladIndex = 0;
-
-                    for (var i = 0; i < mediaList.Count; i++)
+                    if (statusMatch.Success == false)
                     {
-                        var media = mediaList[i];
-                        var variants = media.VideoInfo.Variants;
-                        var downloadList = variants.SelectMany(v => GetDownloadDataList(v)).ToArray();
+                        statusMatch = XStatusPattern.Match(url);
 
-                        Console.WriteLine($"{new string('=', 20)} Media {i + 1}/{mediaList.Count}");
-                        Console.WriteLine($"Thumbnail: {media.Thumbnail}");
-                        Console.WriteLine($"Duration : {media.VideoInfo.Duration} ms");
-                        Console.WriteLine($"Variants Found : {variants.Count}");
-                        Console.WriteLine($"Downloads Found : {downloadList.Length}");
-                        Console.WriteLine();
-
-                        for (var k = 0; k < downloadList.Length; k++)
+                        if (statusMatch.Success == false)
                         {
-                            var download = downloadList[k];
+                            Console.WriteLine("Wrong tweet url");
+                            continue;
+                        }
 
-                            if (download.Segments.Count == 0)
+                    }
+
+                    var tweetId = statusMatch.Groups[TweetIdGroup].Value;
+
+                    tweetList.Clear();
+                    driver.Navigate().GoToUrl(url);
+                    are.WaitOne();
+
+                    Console.WriteLine($"Directory: {di + 1} / {directories.Length}, {(di + 1) / (directories.Length / 100.0F):F2}%");
+                    Console.WriteLine($"=> {directories[di]}");
+                    Console.WriteLine($"Tweet: {ui + 1} / {urls.Count}, {(ui + 1) / (urls.Count / 100.0F):F2}%");
+                    Console.WriteLine($"=> {url}");
+
+                    if (tweetList.Count == 0)
+                    {
+                        Console.WriteLine("Tweet not found");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Tweet Found : {tweetList.Count}");
+
+                        var found = tweetList.FirstOrDefault(i => i.Id.Equals(tweetId));
+                        var tweetPrefix = $"{found.CreatedAt.ToLocalTime():yyyyMMdd_HHmmss}_{found.User.ScreenName}_{tweetId}";
+                        var downladIndex = 0;
+                        using var tweetStream = new FileStream(Path.Combine(directory, $"{tweetPrefix}.txt"), FileMode.Create);
+                        using var tweetWriter = new StreamWriter(tweetStream, UTF8WithoutBOM);
+
+                        for (var ti = 0; ti < tweetList.Count; ti++)
+                        {
+                            TwitterTwitInfo tweet = tweetList[ti];
+                            Console.WriteLine($"Media Found : {tweet.Media.Count}");
+
                             {
-                                continue;
+                                if (ti > 0)
+                                {
+                                    tweetWriter.WriteLine();
+                                    tweetWriter.WriteLine(new string('=', 40));
+                                    tweetWriter.WriteLine();
+                                }
+
+                                tweetWriter.WriteLine($"CreatedAt: {tweet.CreatedAt:yyyy-MM-dd HH:mm:ss}");
+                                tweetWriter.WriteLine($"Url: https://twitter.com/{tweet.User.ScreenName}/status/{tweetId}");
+                                tweetWriter.WriteLine($"User: {tweet.User.Name}(@{tweet.User.ScreenName})");
+                                tweetWriter.WriteLine($"Id: {tweetId}");
+                                tweetWriter.WriteLine($"Quoted: {tweet.Quoted}");
+                                tweetWriter.WriteLine($"Media: {tweet.Media.Count}");
+                                tweetWriter.WriteLine();
+                                tweetWriter.WriteLine(tweet.FullText);
+
                             }
 
-                            var fileName = $"{tweetId}_{++downladIndex}_{download.Size.Width}x{download.Size.Height}_{Path.GetFileName(download.Segments[0].LocalPath)}";
-
-                            Console.WriteLine($"{new string('=', 10)} File {k + 1}/{downloadList.Length}");
-                            Console.WriteLine($"Size : {download.Size}");
-                            Console.WriteLine($"File Name : {fileName}");
-                            Console.WriteLine();
-
-                            using var fs = new FileStream(Path.Combine(outputDirectory.FullName, fileName), FileMode.Create);
-
-                            foreach (var segment in download.Segments)
+                            foreach (var media in tweet.Media)
                             {
-                                using var segmentResponse = WebRequest.CreateHttp(segment).GetResponse();
-                                using var segmentResponseStream = segmentResponse.GetResponseStream();
-                                segmentResponseStream.CopyTo(fs, DownloadBufferSize);
+                                var mediaFilePrefix = $"{tweetPrefix}_{++downladIndex}";
+
+                                if (media is TwitterMediaPhotoEntity photo)
+                                {
+                                    using var mediaStream = new FileStream(Path.Combine(directory, $"{mediaFilePrefix}_{Path.GetFileName(new Uri(photo.Url).LocalPath)}"), FileMode.Create);
+
+                                    using var segmentResponse = WebRequest.CreateHttp($"{photo.Url}?name=large").GetResponse();
+                                    using var segmentResponseStream = segmentResponse.GetResponseStream();
+                                    segmentResponseStream.CopyTo(mediaStream, DownloadBufferSize);
+                                }
+                                else if (media is TwitterMediaVideoEntity video)
+                                {
+                                    var variants = video.VideoInfo.Variants;
+                                    var downloadList = variants.SelectMany(v => GetDownloadDataList(video, v)).ToArray();
+
+                                    foreach (var download in downloadList.OrderByDescending(o => o.Size.Width * o.Size.Height))
+                                    {
+                                        if (download.Segments.Count == 0)
+                                        {
+                                            continue;
+                                        }
+
+                                        var fileName = $"{mediaFilePrefix}_{download.Size.Width}x{download.Size.Height}_{Path.GetFileName(download.Segments[0].LocalPath)}";
+
+                                        using var fs = new FileStream(Path.Combine(directory, fileName), FileMode.Create);
+
+                                        foreach (var segment in download.Segments)
+                                        {
+                                            using var segmentResponse = WebRequest.CreateHttp(segment).GetResponse();
+                                            using var segmentResponseStream = segmentResponse.GetResponseStream();
+                                            segmentResponseStream.CopyTo(fs, DownloadBufferSize);
+                                        }
+
+                                        break;
+                                    }
+
+                                }
+
                             }
 
                         }
 
-                        Console.WriteLine();
+                        ui++;
                     }
 
+                    Console.WriteLine();
+                    Thread.Sleep(1000);
                 }
 
             }
 
         }
 
-        private static IEnumerable<DownloadData> GetDownloadDataList(TwitterVideoVariant variant)
+        private static IEnumerable<DownloadData> GetDownloadDataList(TwitterMediaVideoEntity video, TwitterVideoVariant variant)
         {
             if (variant.ContentType.Equals("video/mp4") == true)
             {
-                var size = ParseSize(VidPattern.Match(variant.Url).Groups["size"].Value);
+                var size = ParseSize(variant.Url);
                 yield return new DownloadData(new Uri(variant.Url)) { Size = size };
             }
             else if (variant.ContentType.Equals("application/x-mpegURL") == true)
@@ -151,7 +208,17 @@ namespace TwitterVideoDownloader
                         continue;
                     }
 
-                    var size = ParseSize(PlPattern.Match(line).Groups["size"].Value);
+                    var size = video.OriginalSize;
+
+                    try
+                    {
+                        size = ParseSize(line);
+                    }
+                    catch (Exception)
+                    {
+
+                    }
+
                     var m3u8Uri = new Uri(variantUri, line);
                     var segments = GetM3U8Segments(m3u8Uri).Select(s => new Uri(m3u8Uri, s));
                     yield return new DownloadData(segments) { Size = size };
@@ -200,17 +267,17 @@ namespace TwitterVideoDownloader
 
         }
 
-        private static Size ParseSize(string text)
+        private static Size ParseSize(string url)
         {
-            var splits = text.Split('x');
-            var width = int.Parse(splits[0]);
-            var height = int.Parse(splits[1]);
+            var groups = SizePattern.Match(url).Groups;
+            var width = int.Parse(groups["width"].Value);
+            var height = int.Parse(groups["height"].Value);
             return new Size(width, height);
         }
 
-        private static void OnNetworkResponseReceived(NetworkResponseReceivedEventArgs e, AutoResetEvent are, List<TwitterExtendedMediaEntity> list)
+        private static void OnNetworkResponseReceived(NetworkResponseReceivedEventArgs e, AutoResetEvent are, List<TwitterTwitInfo> list)
         {
-            if (TweetDetailPattern.IsMatch(e.ResponseUrl) == false)
+            if (TweetDetailPattern.IsMatch(e.ResponseUrl) == false || string.IsNullOrEmpty(e.ResponseBody) == true)
             {
                 return;
             }
@@ -227,9 +294,9 @@ namespace TwitterVideoDownloader
 
                 foreach (var instruction in instructions)
                 {
-                    var type = instruction.Value<string>("type");
+                    var instructionType = instruction.Value<string>("type");
 
-                    if (string.Equals(type, "TimelineAddEntries") == false)
+                    if (string.Equals(instructionType, "TimelineAddEntries") == false)
                     {
                         continue;
                     }
@@ -243,15 +310,52 @@ namespace TwitterVideoDownloader
 
                         if (string.Equals(entryType, "TimelineTimelineItem") == true && string.Equals(itemType, "TimelineTweet") == true)
                         {
-                            var extended_entities = itemContent.SelectToken("tweet_results.result.legacy.extended_entities");
+                            var core = itemContent.SelectToken("tweet_results.result.legacy");
 
-                            if (extended_entities == null)
+                            if (core == null)
                             {
                                 continue;
                             }
 
-                            var mediaArray = extended_entities.Value<JArray>("media").ToArray();
-                            list.AddRange(mediaArray.Select(t => new TwitterExtendedMediaEntity(t)));
+                            var user = itemContent.SelectToken("tweet_results.result.core.user_results.result.legacy");
+
+                            var tweet = new TwitterTwitInfo()
+                            {
+                                Id = core.Value<string>("id_str"),
+                                User = new TwitterUser(user),
+                                CreatedAt = DateTime.ParseExact(core.Value<string>("created_at"), "ddd MMM dd HH:mm:ss K yyyy", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal),
+                                FullText = core.Value<string>("full_text"),
+                            };
+                            list.Add(tweet);
+
+                            var quoted = core.SelectToken("quoted_status_permalink");
+
+                            if (quoted != null)
+                            {
+                                tweet.Quoted = quoted.Value<string>("expanded");
+                            }
+
+                            var mediaArray = core.SelectToken("extended_entities.media");
+
+                            if (mediaArray != null)
+                            {
+                                foreach (var media in mediaArray)
+                                {
+                                    var mediaType = media.Value<string>("type");
+
+                                    if (string.Equals(mediaType, "photo") == true)
+                                    {
+                                        tweet.Media.Add(new TwitterMediaPhotoEntity(media));
+                                    }
+                                    else if (string.Equals(mediaType, "video") == true)
+                                    {
+                                        tweet.Media.Add(new TwitterMediaVideoEntity(media));
+                                    }
+
+                                }
+
+                            }
+
                         }
 
                     }
