@@ -11,6 +11,7 @@ namespace TwitterVideoDownloader
         public DateTime CreatedAt { get; set; }
         public string Quoted { get; set; } = string.Empty;
         public string FullText { get; set; } = string.Empty;
+        public List<TwitterUrl> Url { get; } = new List<TwitterUrl>();
         public List<TwitterMediaEntity> Media { get; } = new List<TwitterMediaEntity>();
 
         public TwitterTwitInfo()
