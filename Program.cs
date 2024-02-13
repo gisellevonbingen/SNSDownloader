@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Reflection;
@@ -25,7 +24,6 @@ namespace TwitterVideoDownloader
         public static Regex SizePattern { get; } = new Regex("(?<width>\\d+)x(?<height>\\d+)");
         public static Regex SrcPattern { get; } = new Regex("src=\"(?<src>[^\"]+)\"");
         public static string MapUriPrefix { get; } = "#EXT-X-MAP:URI";
-        public static string OutputDirectory { get; } = "./Output";
         public static int DownloadBufferSize { get; } = 16 * 1024;
         public static Encoding UTF8WithoutBOM = new UTF8Encoding(false);
 
@@ -214,7 +212,7 @@ namespace TwitterVideoDownloader
                 using var pageResponse = WebRequest.CreateHttp(twitpic.Url).GetResponse();
                 using var pageStream = pageResponse.GetDecompressedResponseStream();
 
-                var html = Encoding.UTF8.GetString(pageStream.ToArray());
+                var html = UTF8WithoutBOM.GetString(pageStream.ToArray());
                 var groups = SrcPattern.Match(html).Groups;
                 var src = groups["src"].Value;
 
