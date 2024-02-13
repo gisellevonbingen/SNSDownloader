@@ -12,11 +12,15 @@ namespace TwitterVideoDownloader
         public static Stream GetDecompressedResponseStream(this WebResponse response)
         {
             var contentEncoding = response.Headers[HttpResponseHeader.ContentEncoding];
-            var responseStream = response.GetResponseStream();
+            var original = response.GetResponseStream();
 
-            if (contentEncoding.Equals("gzip") == true)
+            if (string.IsNullOrEmpty(contentEncoding) == true)
             {
-                return new GZipStream(responseStream, CompressionMode.Decompress);
+                return original;
+            }
+            else if (contentEncoding.Equals("gzip") == true)
+            {
+                return new GZipStream(original, CompressionMode.Decompress);
             }
             else
             {
