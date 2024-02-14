@@ -240,20 +240,7 @@ namespace TwitterVideoDownloader
                         tweetWriter.WriteLine();
                     }
 
-                    tweetWriter.WriteLine($"CreatedAt: {tweet.CreatedAt:yyyy-MM-dd HH:mm:ss}");
-                    tweetWriter.WriteLine($"Url: https://twitter.com/{tweet.User.ScreenName}/status/{tweetId}");
-                    tweetWriter.WriteLine($"User: {tweet.User.Name}(@{tweet.User.ScreenName})");
-                    tweetWriter.WriteLine($"Id: {tweetId}");
-                    tweetWriter.WriteLine($"Quoted: {tweet.Quoted}");
-                    tweetWriter.WriteLine($"Media: {tweet.Media.Count}");
-
-                    for (var mi = 0; mi < tweet.Media.Count; mi++)
-                    {
-                        tweetWriter.WriteLine($"- {tweet.Media[mi].Url}");
-                    }
-
-                    tweetWriter.WriteLine();
-                    tweetWriter.WriteLine(tweet.FullText);
+                    WriteTweet(tweetWriter, tweet);
                 }
 
                 foreach (var media in tweet.Media)
@@ -270,6 +257,24 @@ namespace TwitterVideoDownloader
 
             }
 
+        }
+
+        private static void WriteTweet(TextWriter tweetWriter, TwitterTwitInfo tweet)
+        {
+            tweetWriter.WriteLine($"CreatedAt: {tweet.CreatedAt:yyyy-MM-dd HH:mm:ss}");
+            tweetWriter.WriteLine($"Url: https://twitter.com/{tweet.User.ScreenName}/status/{tweet.Id}");
+            tweetWriter.WriteLine($"User: {tweet.User.Name}(@{tweet.User.ScreenName})");
+            tweetWriter.WriteLine($"Id: {tweet.Id}");
+            tweetWriter.WriteLine($"Quoted: {tweet.Quoted}");
+            tweetWriter.WriteLine($"Media: {tweet.Media.Count}");
+
+            for (var mi = 0; mi < tweet.Media.Count; mi++)
+            {
+                tweetWriter.WriteLine($"- {tweet.Media[mi].Url}");
+            }
+
+            tweetWriter.WriteLine();
+            tweetWriter.WriteLine(tweet.FullText);
         }
 
         private static void DownloadMedia(string directory, string mediaFilePrefix, TwitterMediaEntity media)
