@@ -10,6 +10,8 @@ namespace TwitterVideoDownloader
         private readonly List<TwitterTwitInfo> List;
         private readonly AutoResetEvent ResetEvent;
 
+        public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(1.0D);
+
         public event EventHandler<string> Requested;
 
         public TweetFetcher()
@@ -18,38 +20,37 @@ namespace TwitterVideoDownloader
             this.ResetEvent = new AutoResetEvent(false);
         }
 
-        public void Enqueue(TwitterTwitInfo tweet)
+        public void Set(IEnumerable<TwitterTwitInfo> tweets)
         {
             lock (this.List)
             {
-                this.List.Add(tweet);
+                this.ResetEvent.Set();
+                this.List.Clear();
+                this.List.AddRange(tweets);
             }
 
-        }
-
-        public void Set()
-        {
-            this.ResetEvent.Set();
         }
 
         public IEnumerable<TwitterTwitInfo> Fetch(string url)
         {
-            lock (this.List)
+            this.Requested?.Invoke(this, url);
+
+            if (this.ResetEvent.WaitOne(this.Timeout) == true)
             {
-                this.List.Clear();
-
-                this.Requested?.Invoke(this, url);
-            }
-
-            this.ResetEvent.WaitOne();
-
-            lock (this.List)
-            {
-                foreach (var tweet in this.List)
+                lock (this.List)
                 {
-                    yield return tweet;
+                    foreach (var tweet in this.List)
+                    {
+                        yield return tweet;
+                    }
+
+                    this.List.Clear();
                 }
 
+            }
+            else
+            {
+                Console.WriteLine("Fetch timeout");
             }
 
         }

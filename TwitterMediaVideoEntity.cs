@@ -9,7 +9,6 @@ namespace TwitterVideoDownloader
 {
     public class TwitterMediaVideoEntity : TwitterMediaEntity
     {
-        public string Thumbnail { get; set; } = string.Empty;
         public Dictionary<string, SizeData> Sizes { get; } = new Dictionary<string, SizeData>();
         public Size OriginalSize { get; set; } = new Size();
         public TwitterVideoInfo VideoInfo { get; set; } = null;
@@ -21,7 +20,7 @@ namespace TwitterVideoDownloader
 
         public TwitterMediaVideoEntity(JToken json) : this()
         {
-            this.Thumbnail = json.Value<string>("media_url_https");
+            this.Url = json.Value<string>("media_url_https");
             
             foreach (var pair in json.Value<JObject>("sizes"))
             {

@@ -50,15 +50,22 @@ namespace TwitterVideoDownloader
             Console.Write("Press enter to start after login");
             Console.ReadLine();
 
-            RecreateDriver(crawlOptions);
+            var reaminCrawlCount = 0;
 
             using var are = new TweetFetcher();
             are.Requested += (sender, url) =>
             {
+                if (reaminCrawlCount <= 0)
+                {
+                    reaminCrawlCount = 50;
+                    RecreateDriver(crawlOptions);
+                    Driver.Manage().Network.NetworkResponseReceived += (sender, e) => OnNetworkResponseReceived(e, are);
+                    Driver.Manage().Network.StartMonitoring().Wait();
+                }
+
+                reaminCrawlCount--;
                 Driver.Navigate().GoToUrl(url);
             };
-            Driver.Manage().Network.NetworkResponseReceived += (sender, e) => OnNetworkResponseReceived(e, are);
-            Driver.Manage().Network.StartMonitoring().Wait();
 
             var directories = Directory.GetDirectories(Directory.GetCurrentDirectory());
 
@@ -124,10 +131,11 @@ namespace TwitterVideoDownloader
                                     Console.WriteLine($"Tweet found : {tweets.Count}");
                                     DownloadTweet(tweets, tweetId, directory);
                                     ui++;
+
+                                    progressed.Add(tweetId);
+                                    File.AppendAllLines(progressFile, new[] { tweetId });
                                 }
 
-                                progressed.Add(tweetId);
-                                File.AppendAllLines(progressFile, new[] { tweetId });
                             }
                             finally
                             {
@@ -141,7 +149,6 @@ namespace TwitterVideoDownloader
 
                 }
 
-                File.Delete(progressFile);
             }
 
         }
@@ -218,6 +225,7 @@ namespace TwitterVideoDownloader
             var downladIndex = 0;
             using var tweetStream = new FileStream(Path.Combine(directory, $"{tweetPrefix}.txt"), FileMode.Create);
             using var tweetWriter = new StreamWriter(tweetStream, UTF8WithoutBOM);
+            var mediaUrls = new HashSet<string>();
 
             for (var ti = 0; ti < tweetList.Count; ti++)
             {
@@ -238,15 +246,26 @@ namespace TwitterVideoDownloader
                     tweetWriter.WriteLine($"Id: {tweetId}");
                     tweetWriter.WriteLine($"Quoted: {tweet.Quoted}");
                     tweetWriter.WriteLine($"Media: {tweet.Media.Count}");
+
+                    for (var mi = 0; mi < tweet.Media.Count; mi++)
+                    {
+                        tweetWriter.WriteLine($"- {tweet.Media[mi].Url}");
+                    }
+
                     tweetWriter.WriteLine();
                     tweetWriter.WriteLine(tweet.FullText);
-
                 }
 
                 foreach (var media in tweet.Media)
                 {
+                    if (mediaUrls.Contains(media.Url) == true)
+                    {
+                        continue;
+                    }
+
                     var mediaFilePrefix = $"{tweetPrefix}_{++downladIndex}";
                     DownloadMedia(directory, mediaFilePrefix, media);
+                    mediaUrls.Add(media.Url);
                 }
 
             }
@@ -312,11 +331,19 @@ namespace TwitterVideoDownloader
 
         private static void DownloadVideo(Stream output, IEnumerable<Uri> segments)
         {
-            foreach (var segment in segments)
+            try
             {
-                using var segmentResponse = WebRequest.CreateHttp(segment).GetResponse();
-                using var segmentResponseStream = segmentResponse.GetResponseStream();
-                segmentResponseStream.CopyTo(output, DownloadBufferSize);
+                foreach (var segment in segments)
+                {
+                    using var segmentResponse = WebRequest.CreateHttp(segment).GetResponse();
+                    using var segmentResponseStream = segmentResponse.GetResponseStream();
+                    segmentResponseStream.CopyTo(output, DownloadBufferSize);
+                }
+
+            }
+            catch (WebException e)
+            {
+                Console.WriteLine(e);
             }
 
         }
@@ -415,25 +442,8 @@ namespace TwitterVideoDownloader
                 return;
             }
 
-            try
-            {
-                var body = JObject.Parse(e.ResponseBody);
-
-                foreach (var tweet in GetTweets(body))
-                {
-                    are.Enqueue(tweet);
-                }
-
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex);
-            }
-            finally
-            {
-                are.Set();
-            }
-
+            var body = JObject.Parse(e.ResponseBody);
+            are.Set(GetTweets(body));
         }
 
         private static IEnumerable<TwitterTwitInfo> GetTweets(JObject body)

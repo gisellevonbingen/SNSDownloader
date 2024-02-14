@@ -7,7 +7,6 @@ namespace TwitterVideoDownloader
 {
     public class TwitterMediaPhotoEntity : TwitterMediaEntity
     {
-        public string Url { get; set; } = string.Empty;
         public bool Large { get; set; } = false;
 
         public TwitterMediaPhotoEntity()
