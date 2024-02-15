@@ -9,7 +9,19 @@ namespace TwitterVideoDownloader
 {
     public static class WebResponseExtensions
     {
-        public static Stream GetDecompressedResponseStream(this WebResponse response)
+        public static string ReadAsString(this WebResponse response, Encoding encoding)
+        {
+            using var reader = response.ReadAsReader(encoding);
+            return reader.ReadToEnd();
+        }
+
+        public static StreamReader ReadAsReader(this WebResponse response, Encoding encoding)
+        {
+            var stream = ReadAsStream(response);
+            return new StreamReader(stream, encoding);
+        }
+
+        public static Stream ReadAsStream(this WebResponse response)
         {
             var contentEncoding = response.Headers[HttpResponseHeader.ContentEncoding];
             var original = response.GetResponseStream();

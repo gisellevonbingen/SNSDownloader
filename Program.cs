@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Web;
 using Newtonsoft.Json.Linq;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
@@ -274,7 +275,7 @@ namespace TwitterVideoDownloader
             }
 
             tweetWriter.WriteLine();
-            tweetWriter.WriteLine(tweet.FullText);
+            tweetWriter.WriteLine(HttpUtility.HtmlDecode(tweet.FullText));
         }
 
         private static void DownloadMedia(string directory, string mediaFilePrefix, TwitterMediaEntity media)
@@ -285,14 +286,17 @@ namespace TwitterVideoDownloader
             }
             else if (media is TwitterMediaTwitPicEntity twitpic)
             {
-                using var pageResponse = WebRequest.CreateHttp(twitpic.Url).GetResponse();
-                using var pageStream = pageResponse.GetDecompressedResponseStream();
+                using var page = GetResponse(twitpic.Url);
 
-                var html = UTF8WithoutBOM.GetString(pageStream.ToArray());
-                var groups = SrcPattern.Match(html).Groups;
-                var src = groups["src"].Value;
+                if (page.StatusCode == HttpStatusCode.OK)
+                {
+                    var html = page.ReadAsString(UTF8WithoutBOM);
+                    var groups = SrcPattern.Match(html).Groups;
+                    var src = groups["src"].Value;
 
-                DownloadSimpleMedia(directory, mediaFilePrefix, src);
+                    DownloadSimpleMedia(directory, mediaFilePrefix, src);
+                }
+
             }
             else if (media is TwitterMediaVideoEntity video)
             {
@@ -320,16 +324,13 @@ namespace TwitterVideoDownloader
 
         private static void DownloadSimpleMedia(string directory, string mediaFilePrefix, string url)
         {
-            try
+            using var response = GetResponse(url);
+
+            if (response.StatusCode == HttpStatusCode.OK)
             {
+                using var responseStream = response.ReadAsStream();
                 using var mediaStream = new FileStream(Path.Combine(directory, $"{mediaFilePrefix}_{Path.GetFileName(new Uri(url).LocalPath)}"), FileMode.Create);
-                using var response = WebRequest.CreateHttp(url).GetResponse();
-                using var responseStream = response.GetResponseStream();
                 responseStream.CopyTo(mediaStream, DownloadBufferSize);
-            }
-            catch (WebException e)
-            {
-                Console.WriteLine(e);
             }
 
         }
@@ -340,8 +341,8 @@ namespace TwitterVideoDownloader
             {
                 foreach (var segment in segments)
                 {
-                    using var segmentResponse = WebRequest.CreateHttp(segment).GetResponse();
-                    using var segmentResponseStream = segmentResponse.GetResponseStream();
+                    using var segmentResponse = GetResponse(segment);
+                    using var segmentResponseStream = segmentResponse.ReadAsStream();
                     segmentResponseStream.CopyTo(output, DownloadBufferSize);
                 }
 
@@ -363,8 +364,8 @@ namespace TwitterVideoDownloader
             else if (variant.ContentType.Equals("application/x-mpegURL") == true)
             {
                 var variantUri = new Uri(variant.Url);
-                using var response = WebRequest.CreateHttp(variantUri).GetResponse();
-                using var responseReader = new StreamReader(response.GetResponseStream());
+                using var response = GetResponse(variantUri);
+                using var responseReader = response.ReadAsReader(UTF8WithoutBOM);
 
                 for (string line = null; (line = responseReader.ReadLine()) != null;)
                 {
@@ -399,8 +400,8 @@ namespace TwitterVideoDownloader
 
         private static IEnumerable<string> GetM3U8Segments(Uri uri)
         {
-            using var response = WebRequest.CreateHttp(uri).GetResponse();
-            using var responseReader = new StreamReader(response.GetResponseStream());
+            using var response = GetResponse(uri);
+            using var responseReader = response.ReadAsReader(UTF8WithoutBOM);
 
             for (string line = null; (line = responseReader.ReadLine()) != null;)
             {
@@ -565,6 +566,23 @@ namespace TwitterVideoDownloader
             }
 
             return true;
+        }
+
+        private static HttpWebResponse GetResponse(string url) => GetResponse(WebRequest.CreateHttp(url));
+
+        private static HttpWebResponse GetResponse(Uri uri) => GetResponse(WebRequest.CreateHttp(uri));
+
+        private static HttpWebResponse GetResponse(HttpWebRequest request)
+        {
+            try
+            {
+                return request.GetResponse() as HttpWebResponse;
+            }
+            catch (WebException e)
+            {
+                return e.Response as HttpWebResponse;
+            }
+
         }
 
     }
