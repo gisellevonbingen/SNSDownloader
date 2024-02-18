@@ -282,19 +282,31 @@ namespace TwitterVideoDownloader
         {
             if (media is TwitterMediaPhotoEntity photo)
             {
-                DownloadSimpleMedia(directory, mediaFilePrefix, photo.RequestUrl);
+                using var response = GetResponse(photo.RequestUrl);
+
+                if (response.Success == true)
+                {
+                    DownloadSimpleMedia(directory, mediaFilePrefix, response.Response);
+                }
+
             }
             else if (media is TwitterMediaTwitPicEntity twitpic)
             {
                 using var page = GetResponse(twitpic.Url);
 
-                if (page.StatusCode == HttpStatusCode.OK)
+                if (page.Success == true)
                 {
-                    var html = page.ReadAsString(UTF8WithoutBOM);
+                    var html = page.Response.ReadAsString(UTF8WithoutBOM);
                     var groups = SrcPattern.Match(html).Groups;
                     var src = groups["src"].Value;
 
-                    DownloadSimpleMedia(directory, mediaFilePrefix, src);
+                    using var response = GetResponse(src);
+
+                    if (response.Success == true)
+                    {
+                        DownloadSimpleMedia(directory, mediaFilePrefix, response.Response);
+                    }
+
                 }
 
             }
@@ -322,17 +334,11 @@ namespace TwitterVideoDownloader
 
         }
 
-        private static void DownloadSimpleMedia(string directory, string mediaFilePrefix, string url)
+        private static void DownloadSimpleMedia(string directory, string mediaFilePrefix, HttpWebResponse response)
         {
-            using var response = GetResponse(url);
-
-            if (response.StatusCode == HttpStatusCode.OK)
-            {
-                using var responseStream = response.ReadAsStream();
-                using var mediaStream = new FileStream(Path.Combine(directory, $"{mediaFilePrefix}_{Path.GetFileName(new Uri(url).LocalPath)}"), FileMode.Create);
-                responseStream.CopyTo(mediaStream, DownloadBufferSize);
-            }
-
+            using var responseStream = response.ReadAsStream();
+            using var mediaStream = new FileStream(Path.Combine(directory, $"{mediaFilePrefix}_{Path.GetFileName(response.ResponseUri.LocalPath)}"), FileMode.Create);
+            responseStream.CopyTo(mediaStream, DownloadBufferSize);
         }
 
         private static void DownloadVideo(Stream output, IEnumerable<Uri> segments)
@@ -342,7 +348,7 @@ namespace TwitterVideoDownloader
                 foreach (var segment in segments)
                 {
                     using var segmentResponse = GetResponse(segment);
-                    using var segmentResponseStream = segmentResponse.ReadAsStream();
+                    using var segmentResponseStream = segmentResponse.Response.ReadAsStream();
                     segmentResponseStream.CopyTo(output, DownloadBufferSize);
                 }
 
@@ -365,7 +371,7 @@ namespace TwitterVideoDownloader
             {
                 var variantUri = new Uri(variant.Url);
                 using var response = GetResponse(variantUri);
-                using var responseReader = response.ReadAsReader(UTF8WithoutBOM);
+                using var responseReader = response.Response.ReadAsReader(UTF8WithoutBOM);
 
                 for (string line = null; (line = responseReader.ReadLine()) != null;)
                 {
@@ -386,7 +392,8 @@ namespace TwitterVideoDownloader
                     }
 
                     var m3u8Uri = new Uri(variantUri, line);
-                    var segments = GetM3U8Segments(m3u8Uri).Select(s => new Uri(m3u8Uri, s));
+                    using var m3u8Response = GetResponse(m3u8Uri);
+                    var segments = GetM3U8Segments(m3u8Response.Response).Select(s => new Uri(m3u8Uri, s));
                     yield return new DownloadData(segments) { Size = size };
                 }
 
@@ -398,9 +405,8 @@ namespace TwitterVideoDownloader
 
         }
 
-        private static IEnumerable<string> GetM3U8Segments(Uri uri)
+        private static IEnumerable<string> GetM3U8Segments(HttpWebResponse response)
         {
-            using var response = GetResponse(uri);
             using var responseReader = response.ReadAsReader(UTF8WithoutBOM);
 
             for (string line = null; (line = responseReader.ReadLine()) != null;)
@@ -568,19 +574,50 @@ namespace TwitterVideoDownloader
             return true;
         }
 
-        private static HttpWebResponse GetResponse(string url) => GetResponse(WebRequest.CreateHttp(url));
+        private class WrappedResponse : IDisposable
+        {
+            public HttpWebRequest Request { get; }
+            public HttpWebResponse Response { get; }
+            public bool Success { get; }
 
-        private static HttpWebResponse GetResponse(Uri uri) => GetResponse(WebRequest.CreateHttp(uri));
+            public WrappedResponse(HttpWebRequest request, HttpWebResponse response, bool success)
+            {
+                this.Request = request;
+                this.Response = response;
+                this.Success = success;
+            }
 
-        private static HttpWebResponse GetResponse(HttpWebRequest request)
+            protected virtual void Dispose(bool disposing)
+            {
+                this.Response.Dispose();
+            }
+
+            public void Dispose()
+            {
+                GC.SuppressFinalize(this);
+                this.Dispose(true);
+            }
+
+            ~WrappedResponse()
+            {
+                this.Dispose(false);
+            }
+
+        }
+
+        private static WrappedResponse GetResponse(string url) => GetResponse(WebRequest.CreateHttp(url));
+
+        private static WrappedResponse GetResponse(Uri uri) => GetResponse(WebRequest.CreateHttp(uri));
+
+        private static WrappedResponse GetResponse(HttpWebRequest request)
         {
             try
             {
-                return request.GetResponse() as HttpWebResponse;
+                return new WrappedResponse(request, request.GetResponse() as HttpWebResponse, true);
             }
             catch (WebException e)
             {
-                return e.Response as HttpWebResponse;
+                return new WrappedResponse(request, e.Response as HttpWebResponse, false);
             }
 
         }
