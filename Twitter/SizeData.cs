@@ -4,7 +4,7 @@ using System.Drawing;
 using System.Text;
 using Newtonsoft.Json.Linq;
 
-namespace TwitterVideoDownloader
+namespace SNSDownloader.Twitter
 {
     public class SizeData
     {

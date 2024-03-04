@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace TwitterVideoDownloader
+namespace SNSDownloader.Twitter
 {
     public class TwitterTwitInfo
     {

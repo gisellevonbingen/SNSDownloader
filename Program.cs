@@ -1,36 +1,53 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
-using System.Web;
 using Newtonsoft.Json.Linq;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
+using SNSDownloader.Tiktok;
+using SNSDownloader.Twitter;
 
-namespace TwitterVideoDownloader
+namespace SNSDownloader
 {
     public class Program
     {
-        public static string TweetIdGroup { get; } = "tweet_id";
-        public static Regex XStatusPattern { get; } = new Regex($"https:\\/\\/x\\.com\\/(?<user_id>.+)\\/status\\/(?<{TweetIdGroup}>\\d+)(\\?.+)?");
-        public static Regex TweetStatusPattern { get; } = new Regex($"https:\\/\\/twitter\\.com\\/(?<user_id>.+)\\/status\\/(?<{TweetIdGroup}>\\d+)(\\?.+)?");
-        public static Regex TweetDetailPattern { get; } = new Regex("https:\\/\\/twitter\\.com\\/i\\/api\\/graphql\\/.+\\/TweetDetail");
-        public static Regex SizePattern { get; } = new Regex("(?<width>\\d+)x(?<height>\\d+)");
-        public static Regex SrcPattern { get; } = new Regex("src=\"(?<src>[^\"]+)\"");
         public static string MapUriPrefix { get; } = "#EXT-X-MAP:URI";
         public static int DownloadBufferSize { get; } = 16 * 1024;
         public static Encoding UTF8WithoutBOM = new UTF8Encoding(false);
 
+        private static readonly List<AbstractDownloader> Downloaders = new List<AbstractDownloader>();
+        private static TwitterDownloader TwitterDownloader;
+        private static TiktokDownloader TiktokDownloader;
         private static IWebDriver Driver;
 
         public static void Main()
+        {
+            try
+            {
+                Downloaders.Add(TwitterDownloader = new TwitterDownloader());
+                Downloaders.Add(TiktokDownloader = new TiktokDownloader());
+
+                Console.CancelKeyPress += (sender, e) =>
+                {
+                    Driver.DisposeQuietly();
+                };
+
+                Run();
+            }
+            finally
+            {
+                Downloaders.ForEach(d => d.DisposeQuietly());
+                Driver.DisposeQuietly();
+            }
+
+        }
+
+        public static void Run()
         {
             var loginOptions = new ChromeOptions();
             //loginOptions.AddArgument("--headless");
@@ -38,111 +55,98 @@ namespace TwitterVideoDownloader
             var crawlOptions = new ChromeOptions();
             crawlOptions.AddArgument("--headless");
 
-            Console.WriteLine("Driver starting");
-            RecreateDriver(loginOptions);
-            Driver.Navigate().GoToUrl("https://twitter.com/");
+            var inputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Input");
+            Directory.CreateDirectory(inputDirectory);
+            var outputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Output");
+            Directory.CreateDirectory(outputDirectory);
 
-            Console.CancelKeyPress += (sender, e) =>
-            {
-                Driver.Dispose();
-            };
-
-            Console.WriteLine("First, login twitter account");
-            Console.Write("Press enter to start after login");
-            Console.ReadLine();
+            var inputs = Directory.GetFiles(inputDirectory, "*.json");
+            var progressed = new ProgressTracker(Path.Combine(inputDirectory, "progress.txt"));
 
             var reaminCrawlCount = 0;
+            var twitterLogined = false;
 
-            using var are = new TweetFetcher();
-            are.Requested += (sender, url) =>
+            Console.WriteLine($"Found input files: {inputs.Length}");
+            Console.WriteLine();
+
+            void crawl(IDownloader downloader, string url)
             {
+                if (downloader == TwitterDownloader && !twitterLogined)
+                {
+                    RecreateDriver(loginOptions);
+                    Driver.Navigate().GoToUrl("https://twitter.com/i/flow/login/");
+
+                    Console.WriteLine("First, login twitter account");
+                    Console.Write("Press enter to start after login");
+                    Console.ReadLine();
+
+                    twitterLogined = true;
+                    reaminCrawlCount = 0;
+                }
+
                 if (reaminCrawlCount <= 0)
                 {
                     reaminCrawlCount = 50;
                     RecreateDriver(crawlOptions);
-                    Driver.Manage().Network.NetworkResponseReceived += (sender, e) => OnNetworkResponseReceived(e, are);
-                    Driver.Manage().Network.StartMonitoring().Wait();
+
+                    var network = Driver.Manage().Network;
+                    Downloaders.ForEach(d => d.OnNetworkCreated(network));
+
+                    network.StartMonitoring().Wait();
                 }
 
                 reaminCrawlCount--;
                 Driver.Navigate().GoToUrl(url);
-            };
+            }
 
-            var directories = Directory.GetDirectories(Directory.GetCurrentDirectory());
 
-            for (var di = 0; di < directories.Length; di++)
+            for (var di = 0; di < inputs.Length; di++)
             {
-                var directory = directories[di];
-                var inputFile = Path.Combine(directory, "tweets.json");
+                var urls = JArray.Parse(File.ReadAllText(inputs[di])).Select(v => v.Value<string>()).ToList();
 
-                if (File.Exists(inputFile) == false)
-                {
-                    continue;
-                }
-
-                var urls = JArray.Parse(File.ReadAllText(inputFile)).Select(v => v.Value<string>()).ToList();
-
-                var progressFile = Path.Combine(directory, "progress.txt");
-                var progressed = new HashSet<string>();
-
-                if (File.Exists(progressFile) == true)
-                {
-                    foreach (var line in File.ReadAllLines(progressFile))
-                    {
-                        progressed.Add(line);
-                    }
-
-                }
-
-                for (int ui = 0; ui < urls.Count;)
+                for (var ui = 0; ui < urls.Count;)
                 {
                     var url = urls[ui];
-                    var tweetId = GetTweetId(url);
 
-                    if (string.IsNullOrWhiteSpace(tweetId) == true)
+                    Console.WriteLine($"Input: {di + 1} / {inputs.Length}, {(di + 1) / (inputs.Length / 100.0F):F2}%");
+                    Console.WriteLine($"=> {inputs[di]}");
+                    Console.WriteLine($"Line: {ui + 1} / {urls.Count}, {(ui + 1) / (urls.Count / 100.0F):F2}%");
+                    Console.WriteLine($"=> {url}");
+
+                    if (progressed.Contains(url) == true)
                     {
-                        Console.WriteLine("Wrong tweet url");
+                        Console.WriteLine("Skipped");
                         ui++;
                     }
                     else
                     {
-                        Console.WriteLine($"Directory: {di + 1} / {directories.Length}, {(di + 1) / (directories.Length / 100.0F):F2}%");
-                        Console.WriteLine($"=> {directories[di]}");
-                        Console.WriteLine($"Tweet: {ui + 1} / {urls.Count}, {(ui + 1) / (urls.Count / 100.0F):F2}%");
-                        Console.WriteLine($"=> {url}");
+                        try
+                        {
+                            Downloaders.ForEach(d => d.Reset());
+                            var downloader = Downloaders.FirstOrDefault(d => d.Test(url));
 
-                        if (progressed.Contains(tweetId) == true)
-                        {
-                            Console.WriteLine("Tweet skipped");
-                            ui++;
-                        }
-                        else
-                        {
-                            try
+                            if (downloader == null)
                             {
-                                Console.WriteLine("Tweet fetching");
-                                var tweets = are.Fetch(url).ToList();
+                                Console.WriteLine("Downloader not found");
+                                ui++;
+                            }
+                            else
+                            {
+                                downloader.Log("Fetching");
+                                crawl(downloader, url);
 
-                                if (tweets.Count == 0)
+                                if (downloader.Download(url, Directory.CreateDirectory(Path.Combine(outputDirectory, downloader.PlatformName)).FullName))
                                 {
-                                    Console.WriteLine("Tweet not found");
-                                }
-                                else
-                                {
-                                    Console.WriteLine($"Tweet found : {tweets.Count}");
-                                    DownloadTweet(tweets, tweetId, directory);
                                     ui++;
-
-                                    progressed.Add(tweetId);
-                                    File.AppendAllLines(progressFile, new[] { tweetId });
+                                    progressed.Add(url);
                                 }
 
                             }
-                            finally
-                            {
-                                Thread.Sleep(5000);
-                            }
 
+                        }
+                        finally
+                        {
+                            Thread.Sleep(5000);
                         }
 
                         Console.WriteLine();
@@ -168,7 +172,7 @@ namespace TwitterVideoDownloader
             if (prev != null)
             {
                 cookies.AddRange(GetCookies(prev));
-                prev.Dispose();
+                prev.DisposeQuietly();
             }
 
             var driverService = ChromeDriverService.CreateDefaultService(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
@@ -182,6 +186,25 @@ namespace TwitterVideoDownloader
             }
 
             return driver;
+        }
+
+        public static void DownloadLargest(string fileNamePrefix, string directory, IEnumerable<DownloadData> downloads)
+        {
+            foreach (var download in downloads.OrderByDescending(o => o.Size.Width * o.Size.Height))
+            {
+                if (download.Segments.Count == 0)
+                {
+                    continue;
+                }
+
+                var fileName = $"{fileNamePrefix}_{download.Size.Width}x{download.Size.Height}_{Path.GetFileName(download.Segments[0].LocalPath)}";
+
+                using var mediaStream = new FileStream(Path.Combine(directory, fileName), FileMode.Create);
+                DownloadVideo(mediaStream, download.Segments);
+
+                break;
+            }
+
         }
 
         private static OpenQA.Selenium.Cookie[] GetCookies(IWebDriver driver)
@@ -201,211 +224,27 @@ namespace TwitterVideoDownloader
 
         }
 
-        private static string GetTweetId(string url)
-        {
-            var statusMatch = TweetStatusPattern.Match(url);
-
-            if (statusMatch.Success == false)
-            {
-                statusMatch = XStatusPattern.Match(url);
-
-                if (statusMatch.Success == false)
-                {
-                    return null;
-                }
-
-            }
-
-            return statusMatch.Groups[TweetIdGroup].Value;
-        }
-
-        private static void DownloadTweet(List<TwitterTwitInfo> tweetList, string tweetId, string directory)
-        {
-            var found = tweetList.FirstOrDefault(i => i.Id.Equals(tweetId));
-            var tweetPrefix = $"{found.CreatedAt.ToLocalTime():yyyyMMdd_HHmmss}_{found.User.ScreenName}_{tweetId}";
-            var downladIndex = 0;
-            using var tweetStream = new FileStream(Path.Combine(directory, $"{tweetPrefix}.txt"), FileMode.Create);
-            using var tweetWriter = new StreamWriter(tweetStream, UTF8WithoutBOM);
-            var mediaUrls = new HashSet<string>();
-
-            for (var ti = 0; ti < tweetList.Count; ti++)
-            {
-                var tweet = tweetList[ti];
-                Console.WriteLine($"Media found : {tweet.Media.Count}");
-
-                {
-                    if (ti > 0)
-                    {
-                        tweetWriter.WriteLine();
-                        tweetWriter.WriteLine(new string('=', 40));
-                        tweetWriter.WriteLine();
-                    }
-
-                    WriteTweet(tweetWriter, tweet);
-                }
-
-                foreach (var media in tweet.Media)
-                {
-                    if (mediaUrls.Contains(media.Url) == true)
-                    {
-                        continue;
-                    }
-
-                    var mediaFilePrefix = $"{tweetPrefix}_{++downladIndex}";
-                    DownloadMedia(directory, mediaFilePrefix, media);
-                    mediaUrls.Add(media.Url);
-                }
-
-            }
-
-        }
-
-        private static void WriteTweet(TextWriter tweetWriter, TwitterTwitInfo tweet)
-        {
-            tweetWriter.WriteLine($"CreatedAt: {tweet.CreatedAt:yyyy-MM-dd HH:mm:ss}");
-            tweetWriter.WriteLine($"Url: https://twitter.com/{tweet.User.ScreenName}/status/{tweet.Id}");
-            tweetWriter.WriteLine($"User: {tweet.User.Name}(@{tweet.User.ScreenName})");
-            tweetWriter.WriteLine($"Id: {tweet.Id}");
-            tweetWriter.WriteLine($"Quoted: {tweet.Quoted}");
-            tweetWriter.WriteLine($"Media: {tweet.Media.Count}");
-
-            for (var mi = 0; mi < tweet.Media.Count; mi++)
-            {
-                tweetWriter.WriteLine($"- {tweet.Media[mi].Url}");
-            }
-
-            tweetWriter.WriteLine();
-            tweetWriter.WriteLine(HttpUtility.HtmlDecode(tweet.FullText));
-        }
-
-        private static void DownloadMedia(string directory, string mediaFilePrefix, TwitterMediaEntity media)
-        {
-            if (media is TwitterMediaPhotoEntity photo)
-            {
-                using var response = GetResponse(photo.RequestUrl);
-
-                if (response.Success == true)
-                {
-                    DownloadSimpleMedia(directory, mediaFilePrefix, response.Response);
-                }
-
-            }
-            else if (media is TwitterMediaTwitPicEntity twitpic)
-            {
-                using var page = GetResponse(twitpic.Url);
-
-                if (page.Success == true)
-                {
-                    var html = page.Response.ReadAsString(UTF8WithoutBOM);
-                    var groups = SrcPattern.Match(html).Groups;
-                    var src = groups["src"].Value;
-
-                    using var response = GetResponse(src);
-
-                    if (response.Success == true)
-                    {
-                        DownloadSimpleMedia(directory, mediaFilePrefix, response.Response);
-                    }
-
-                }
-
-            }
-            else if (media is TwitterMediaVideoEntity video)
-            {
-                var variants = video.VideoInfo.Variants;
-                var downloadList = variants.SelectMany(v => GetDownloadDataList(video, v)).ToArray();
-
-                foreach (var download in downloadList.OrderByDescending(o => o.Size.Width * o.Size.Height))
-                {
-                    if (download.Segments.Count == 0)
-                    {
-                        continue;
-                    }
-
-                    var fileName = $"{mediaFilePrefix}_{download.Size.Width}x{download.Size.Height}_{Path.GetFileName(download.Segments[0].LocalPath)}";
-
-                    using var mediaStream = new FileStream(Path.Combine(directory, fileName), FileMode.Create);
-                    DownloadVideo(mediaStream, download.Segments);
-
-                    break;
-                }
-
-            }
-
-        }
-
-        private static void DownloadSimpleMedia(string directory, string mediaFilePrefix, HttpWebResponse response)
+        public static void DownloadSimpleMedia(string path, HttpWebResponse response)
         {
             using var responseStream = response.ReadAsStream();
-            using var mediaStream = new FileStream(Path.Combine(directory, $"{mediaFilePrefix}_{Path.GetFileName(response.ResponseUri.LocalPath)}"), FileMode.Create);
+            using var mediaStream = new FileStream(path, FileMode.Create);
             responseStream.CopyTo(mediaStream, DownloadBufferSize);
         }
 
-        private static void DownloadVideo(Stream output, IEnumerable<Uri> segments)
-        {
-            try
-            {
-                foreach (var segment in segments)
-                {
-                    using var segmentResponse = GetResponse(segment);
-                    using var segmentResponseStream = segmentResponse.Response.ReadAsStream();
-                    segmentResponseStream.CopyTo(output, DownloadBufferSize);
-                }
+        public static void DownloadSimpleMedia(string directory, string mediaFilePrefix, HttpWebResponse response) => DownloadSimpleMedia(Path.Combine(directory, $"{mediaFilePrefix}_{Path.GetFileName(response.ResponseUri.LocalPath)}"), response);
 
-            }
-            catch (WebException e)
+        public static void DownloadVideo(Stream output, IEnumerable<Uri> segments)
+        {
+            foreach (var segment in segments)
             {
-                Console.WriteLine(e);
+                using var segmentResponse = GetResponse(segment);
+                using var segmentResponseStream = segmentResponse.Response.ReadAsStream();
+                segmentResponseStream.CopyTo(output, DownloadBufferSize);
             }
 
         }
 
-        private static IEnumerable<DownloadData> GetDownloadDataList(TwitterMediaVideoEntity video, TwitterVideoVariant variant)
-        {
-            if (variant.ContentType.Equals("video/mp4") == true)
-            {
-                var size = ParseSize(variant.Url);
-                yield return new DownloadData(new Uri(variant.Url)) { Size = size };
-            }
-            else if (variant.ContentType.Equals("application/x-mpegURL") == true)
-            {
-                var variantUri = new Uri(variant.Url);
-                using var response = GetResponse(variantUri);
-                using var responseReader = response.Response.ReadAsReader(UTF8WithoutBOM);
-
-                for (string line = null; (line = responseReader.ReadLine()) != null;)
-                {
-                    if (line.StartsWith("#") == true)
-                    {
-                        continue;
-                    }
-
-                    var size = video.OriginalSize;
-
-                    try
-                    {
-                        size = ParseSize(line);
-                    }
-                    catch (Exception)
-                    {
-
-                    }
-
-                    var m3u8Uri = new Uri(variantUri, line);
-                    using var m3u8Response = GetResponse(m3u8Uri);
-                    var segments = GetM3U8Segments(m3u8Response.Response).Select(s => new Uri(m3u8Uri, s));
-                    yield return new DownloadData(segments) { Size = size };
-                }
-
-            }
-            else
-            {
-                Console.WriteLine($"Unknown ContentType: {variant.ContentType}");
-            }
-
-        }
-
-        private static IEnumerable<string> GetM3U8Segments(HttpWebResponse response)
+        public static IEnumerable<string> GetM3U8Segments(HttpWebResponse response)
         {
             using var responseReader = response.ReadAsReader(UTF8WithoutBOM);
 
@@ -439,177 +278,24 @@ namespace TwitterVideoDownloader
 
         }
 
-        private static Size ParseSize(string url)
+        public static WrappedResponse GetResponse(string url) => GetResponse(WebRequest.CreateHttp(url));
+
+        public static WrappedResponse GetResponse(Uri uri) => GetResponse(WebRequest.CreateHttp(uri));
+
+        public static WrappedResponse GetResponse(NetworkRequestSentEventArgs e)
         {
-            var groups = SizePattern.Match(url).Groups;
-            var width = int.Parse(groups["width"].Value);
-            var height = int.Parse(groups["height"].Value);
-            return new Size(width, height);
+            var request = WebRequest.CreateHttp(e.RequestUrl);
+            request.Method = e.RequestMethod;
+
+            foreach (var pair in e.RequestHeaders)
+            {
+                request.Headers[pair.Key] = pair.Value;
+            }
+
+            return GetResponse(request);
         }
 
-        private static void OnNetworkResponseReceived(NetworkResponseReceivedEventArgs e, TweetFetcher are)
-        {
-            if (TweetDetailPattern.IsMatch(e.ResponseUrl) == false || string.IsNullOrEmpty(e.ResponseBody) == true)
-            {
-                return;
-            }
-
-            var body = JObject.Parse(e.ResponseBody);
-            are.Set(GetTweets(body));
-        }
-
-        private static IEnumerable<TwitterTwitInfo> GetTweets(JObject body)
-        {
-            var instructions = body.SelectToken("data.threaded_conversation_with_injections_v2.instructions");
-
-            if (instructions == null)
-            {
-                yield break;
-            }
-
-            foreach (var instruction in instructions)
-            {
-                var instructionType = instruction.Value<string>("type");
-
-                if (string.Equals(instructionType, "TimelineAddEntries") == false)
-                {
-                    continue;
-                }
-
-                foreach (var entry in instruction.Value<JArray>("entries"))
-                {
-                    if (TryParseTweetFromTimelineEntry(entry, out var tweet) == true)
-                    {
-                        yield return tweet;
-                    }
-
-                }
-
-            }
-
-        }
-
-        private static bool TryParseTweetFromTimelineEntry(JToken entry, out TwitterTwitInfo tweet)
-        {
-            var content = entry.Value<JObject>("content");
-            var entryType = content?.Value<string>("entryType");
-            var itemContent = content?.Value<JObject>("itemContent");
-            var itemType = itemContent?.Value<string>("itemType");
-
-            if (string.Equals(entryType, "TimelineTimelineItem") == false || string.Equals(itemType, "TimelineTweet") == false)
-            {
-                tweet = null;
-                return false;
-            }
-
-            var core = itemContent.SelectToken("tweet_results.result.legacy");
-
-            if (core == null)
-            {
-                tweet = null;
-                return false;
-            }
-
-            var user = itemContent.SelectToken("tweet_results.result.core.user_results.result.legacy");
-
-            tweet = new TwitterTwitInfo()
-            {
-                Id = core.Value<string>("id_str"),
-                User = new TwitterUser(user),
-                CreatedAt = DateTime.ParseExact(core.Value<string>("created_at"), "ddd MMM dd HH:mm:ss K yyyy", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal),
-                FullText = core.Value<string>("full_text"),
-            };
-
-            var urlArray = core.SelectToken("entities.urls");
-
-            if (urlArray != null)
-            {
-                foreach (var url in urlArray)
-                {
-                    var turl = new TwitterUrl(url);
-                    tweet.Url.Add(turl);
-                }
-
-                foreach (var url in tweet.Url)
-                {
-                    tweet.FullText = tweet.FullText.Replace(url.Url, url.ExpandedUrl);
-
-                    if (url.ExpandedUrl.StartsWith("http://twitpic.com", StringComparison.OrdinalIgnoreCase) == true)
-                    {
-                        tweet.Media.Add(new TwitterMediaTwitPicEntity() { Url = url.ExpandedUrl });
-                    }
-
-                }
-
-            }
-
-            var quoted = core.SelectToken("quoted_status_permalink");
-
-            if (quoted != null)
-            {
-                tweet.Quoted = quoted.Value<string>("expanded");
-            }
-
-            var mediaArray = core.SelectToken("extended_entities.media");
-
-            if (mediaArray != null)
-            {
-                foreach (var media in mediaArray)
-                {
-                    var mediaType = media.Value<string>("type");
-
-                    if (string.Equals(mediaType, "photo") == true)
-                    {
-                        tweet.Media.Add(new TwitterMediaPhotoEntity(media) { Large = true });
-                    }
-                    else if (string.Equals(mediaType, "video") == true)
-                    {
-                        tweet.Media.Add(new TwitterMediaVideoEntity(media));
-                    }
-
-                }
-
-            }
-
-            return true;
-        }
-
-        private class WrappedResponse : IDisposable
-        {
-            public HttpWebRequest Request { get; }
-            public HttpWebResponse Response { get; }
-            public bool Success { get; }
-
-            public WrappedResponse(HttpWebRequest request, HttpWebResponse response, bool success)
-            {
-                this.Request = request;
-                this.Response = response;
-                this.Success = success;
-            }
-
-            protected virtual void Dispose(bool disposing)
-            {
-                this.Response.Dispose();
-            }
-
-            public void Dispose()
-            {
-                GC.SuppressFinalize(this);
-                this.Dispose(true);
-            }
-
-            ~WrappedResponse()
-            {
-                this.Dispose(false);
-            }
-
-        }
-
-        private static WrappedResponse GetResponse(string url) => GetResponse(WebRequest.CreateHttp(url));
-
-        private static WrappedResponse GetResponse(Uri uri) => GetResponse(WebRequest.CreateHttp(uri));
-
-        private static WrappedResponse GetResponse(HttpWebRequest request)
+        public static WrappedResponse GetResponse(HttpWebRequest request)
         {
             try
             {

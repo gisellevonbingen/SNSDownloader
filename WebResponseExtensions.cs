@@ -5,7 +5,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Text;
 
-namespace TwitterVideoDownloader
+namespace SNSDownloader
 {
     public static class WebResponseExtensions
     {
