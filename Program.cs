@@ -25,17 +25,25 @@ namespace SNSDownloader
         private static TiktokDownloader TiktokDownloader;
         private static IWebDriver Driver;
 
+        private static ChromeOptions TwitterLoginOptions;
+        private static ChromeOptions CrawlOptions;
+
+        private static int ReaminCrawlCount = 0;
+        private static bool TwitterLogined = false;
+
         public static void Main()
         {
+            TwitterLoginOptions = new ChromeOptions();
+
+            CrawlOptions = new ChromeOptions();
+            CrawlOptions.AddArgument("--headless");
+
             try
             {
                 Downloaders.Add(TwitterDownloader = new TwitterDownloader());
                 Downloaders.Add(TiktokDownloader = new TiktokDownloader());
 
-                Console.CancelKeyPress += (sender, e) =>
-                {
-                    Driver.DisposeQuietly();
-                };
+                Console.CancelKeyPress += (sender, e) => Driver.DisposeQuietly();
 
                 Run();
             }
@@ -47,14 +55,8 @@ namespace SNSDownloader
 
         }
 
-        public static void Run()
+        private static void Run()
         {
-            var loginOptions = new ChromeOptions();
-            //loginOptions.AddArgument("--headless");
-
-            var crawlOptions = new ChromeOptions();
-            crawlOptions.AddArgument("--headless");
-
             var inputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Input");
             Directory.CreateDirectory(inputDirectory);
             var outputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Output");
@@ -63,99 +65,104 @@ namespace SNSDownloader
             var inputs = Directory.GetFiles(inputDirectory, "*.json");
             var progressed = new ProgressTracker(Path.Combine(inputDirectory, "progress.txt"));
 
-            var reaminCrawlCount = 0;
-            var twitterLogined = false;
-
             Console.WriteLine($"Found input files: {inputs.Length}");
             Console.WriteLine();
 
-            void crawl(IDownloader downloader, string url)
-            {
-                if (downloader == TwitterDownloader && !twitterLogined)
-                {
-                    RecreateDriver(loginOptions);
-                    Driver.Navigate().GoToUrl("https://twitter.com/i/flow/login/");
-
-                    Console.WriteLine("First, login twitter account");
-                    Console.Write("Press enter to start after login");
-                    Console.ReadLine();
-
-                    twitterLogined = true;
-                    reaminCrawlCount = 0;
-                }
-
-                if (reaminCrawlCount <= 0)
-                {
-                    reaminCrawlCount = 50;
-                    RecreateDriver(crawlOptions);
-
-                    var network = Driver.Manage().Network;
-                    Downloaders.ForEach(d => d.OnNetworkCreated(network));
-
-                    network.StartMonitoring().Wait();
-                }
-
-                reaminCrawlCount--;
-                Driver.Navigate().GoToUrl(url);
-            }
-
-
             for (var di = 0; di < inputs.Length; di++)
             {
-                var urls = JArray.Parse(File.ReadAllText(inputs[di])).Select(v => v.Value<string>()).ToList();
+                var input = inputs[di];
+                var urls = JArray.Parse(File.ReadAllText(input)).Select(v => v.Value<string>()).ToList();
 
-                for (var ui = 0; ui < urls.Count;)
+                for (var ui = 0; ui < urls.Count; ui++)
                 {
                     var url = urls[ui];
 
                     Console.WriteLine($"Input: {di + 1} / {inputs.Length}, {(di + 1) / (inputs.Length / 100.0F):F2}%");
-                    Console.WriteLine($"=> {inputs[di]}");
-                    Console.WriteLine($"Line: {ui + 1} / {urls.Count}, {(ui + 1) / (urls.Count / 100.0F):F2}%");
+                    Console.WriteLine($"=> {input}");
+                    Console.WriteLine($"Url: {ui + 1} / {urls.Count}, {(ui + 1) / (urls.Count / 100.0F):F2}%");
                     Console.WriteLine($"=> {url}");
 
-                    if (progressed.Contains(url) == true)
-                    {
-                        Console.WriteLine("Skipped");
-                        ui++;
-                    }
-                    else
-                    {
-                        try
-                        {
-                            Downloaders.ForEach(d => d.Reset());
-                            var downloader = Downloaders.FirstOrDefault(d => d.Test(url));
+                    Download(progressed, outputDirectory, url);
 
-                            if (downloader == null)
-                            {
-                                Console.WriteLine("Downloader not found");
-                                ui++;
-                            }
-                            else
-                            {
-                                downloader.Log("Fetching");
-                                crawl(downloader, url);
-
-                                if (downloader.Download(url, Directory.CreateDirectory(Path.Combine(outputDirectory, downloader.PlatformName)).FullName))
-                                {
-                                    ui++;
-                                    progressed.Add(url);
-                                }
-
-                            }
-
-                        }
-                        finally
-                        {
-                            Thread.Sleep(5000);
-                        }
-
-                        Console.WriteLine();
-                    }
-
+                    Console.WriteLine();
                 }
 
             }
 
+        }
+
+        private static void Download(ProgressTracker progressed, string outputDirectory, string url)
+        {
+            if (progressed.Contains(url) == true)
+            {
+                Console.WriteLine("Skipped");
+                return;
+            }
+
+            Downloaders.ForEach(d => d.Reset());
+            var downloader = Downloaders.FirstOrDefault(d => d.Test(url));
+
+            if (downloader == null)
+            {
+                Console.WriteLine("Downloader not found");
+                return;
+            }
+
+            while (true)
+            {
+                try
+                {
+                    downloader.Log("Fetching");
+                    Crawl(downloader, url);
+
+                    if (downloader.Download(url, Directory.CreateDirectory(Path.Combine(outputDirectory, downloader.PlatformName)).FullName))
+                    {
+                        progressed.Add(url);
+                        break;
+                    }
+
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                }
+                finally
+                {
+                    Thread.Sleep(5000);
+                }
+
+            }
+
+        }
+
+        private static void Crawl(IDownloader downloader, string url)
+        {
+            if (downloader == TwitterDownloader && !TwitterLogined)
+            {
+                RecreateDriver(TwitterLoginOptions);
+                Driver.Navigate().GoToUrl("https://twitter.com/i/flow/login/");
+
+                Console.WriteLine("First, login twitter account");
+                Console.Write("Press enter to start after login");
+                Console.ReadLine();
+
+                TwitterLogined = true;
+                ReaminCrawlCount = 0;
+            }
+
+            if (ReaminCrawlCount <= 0)
+            {
+                ReaminCrawlCount = 50;
+                RecreateDriver(CrawlOptions);
+
+                var network = Driver.Manage().Network;
+                Downloaders.ForEach(d => d.OnNetworkCreated(network));
+
+                network.StartMonitoring().Wait();
+            }
+
+            ReaminCrawlCount--;
+            Driver.Navigate().GoToUrl(url);
         }
 
         private static void RecreateDriver(ChromeOptions options)
@@ -167,11 +174,17 @@ namespace SNSDownloader
 
         private static IWebDriver RecreateDriver(IWebDriver prev, ChromeOptions options)
         {
-            var cookies = new List<OpenQA.Selenium.Cookie>();
+            var cookieMap = new Dictionary<string, OpenQA.Selenium.Cookie[]>();
 
             if (prev != null)
             {
-                cookies.AddRange(GetCookies(prev));
+                var cookieUrls = new string[] { "https://twitter.com/" };
+
+                foreach (var url in cookieUrls)
+                {
+                    cookieMap[url] = GetCookies(prev, url);
+                }
+
                 prev.DisposeQuietly();
             }
 
@@ -180,9 +193,9 @@ namespace SNSDownloader
             driverService.SuppressInitialDiagnosticInformation = true;
             var driver = new ChromeDriver(driverService, options);
 
-            if (cookies.Count > 0)
+            foreach (var (url, cookies) in cookieMap)
             {
-                PutCookies(driver, cookies);
+                PutCookies(driver, url, cookies);
             }
 
             return driver;
@@ -207,15 +220,16 @@ namespace SNSDownloader
 
         }
 
-        private static OpenQA.Selenium.Cookie[] GetCookies(IWebDriver driver)
+        private static OpenQA.Selenium.Cookie[] GetCookies(IWebDriver driver, string url)
         {
-            driver.Navigate().GoToUrl("https://twitter.com/");
+            driver.Navigate().GoToUrl(url);
             return driver.Manage().Cookies.AllCookies.ToArray();
         }
 
-        private static void PutCookies(IWebDriver driver, IEnumerable<OpenQA.Selenium.Cookie> cookies)
+        private static void PutCookies(IWebDriver driver, string url, IEnumerable<OpenQA.Selenium.Cookie> cookies)
         {
-            driver.Navigate().GoToUrl("https://twitter.com/");
+            driver.Navigate().GoToUrl(url);
+            driver.Manage().Cookies.DeleteAllCookies();
 
             foreach (var cookie in cookies)
             {
