@@ -1,4 +1,4 @@
-# TwitterDownloader
+# SNSDownloader
 Just practice, Persnal purpose
 
-Read tweet urls, and download tweet's text, photo, video
+Can download Twitter(X) and TikTok's text, photo and video
