@@ -7,18 +7,18 @@ using Newtonsoft.Json.Linq;
 
 namespace SNSDownloader.Twitter
 {
-    public class TwitterMediaVideoEntity : TwitterMediaEntity
+    public class MediaEntityVideo : MediaEntity
     {
         public Dictionary<string, SizeData> Sizes { get; } = new Dictionary<string, SizeData>();
         public Size OriginalSize { get; set; } = new Size();
-        public TwitterVideoInfo VideoInfo { get; set; } = null;
+        public VideoInfo VideoInfo { get; set; } = null;
 
-        public TwitterMediaVideoEntity()
+        public MediaEntityVideo()
         {
 
         }
 
-        public TwitterMediaVideoEntity(JToken json) : this()
+        public MediaEntityVideo(JToken json) : this()
         {
             this.Url = json.Value<string>("media_url_https");
             
@@ -29,7 +29,7 @@ namespace SNSDownloader.Twitter
 
             var original_info = json.Value<JObject>("original_info");
             this.OriginalSize = new Size(original_info.Value<int>("width"), original_info.Value<int>("height"));
-            this.VideoInfo = new TwitterVideoInfo(json.Value<JObject>("video_info"));
+            this.VideoInfo = new VideoInfo(json.Value<JObject>("video_info"));
         }
 
     }

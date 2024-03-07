@@ -5,18 +5,18 @@ using Newtonsoft.Json.Linq;
 
 namespace SNSDownloader.Twitter
 {
-    public class TwitterVideoVariant
+    public class VideoVariant
     {
         public int Bitrate { get; set; } = 0;
         public string ContentType { get; set; } = string.Empty;
         public string Url { get; set; } = string.Empty;
 
-        public TwitterVideoVariant()
+        public VideoVariant()
         {
 
         }
 
-        public TwitterVideoVariant(JToken json) : this()
+        public VideoVariant(JToken json) : this()
         {
             this.Bitrate = json.Value<int>("bitrate");
             this.ContentType = json.Value<string>("content_type");

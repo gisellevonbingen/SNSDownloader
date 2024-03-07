@@ -4,9 +4,9 @@ using System.Text;
 
 namespace SNSDownloader.Twitter
 {
-    public class TwitterMediaTwitPicEntity : TwitterMediaEntity
+    public class MediaEntityTwitPic : MediaEntity
     {
-        public TwitterMediaTwitPicEntity()
+        public MediaEntityTwitPic()
         {
 
         }

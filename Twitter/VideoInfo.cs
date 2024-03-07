@@ -6,25 +6,25 @@ using Newtonsoft.Json.Linq;
 
 namespace SNSDownloader.Twitter
 {
-    public class TwitterVideoInfo
+    public class VideoInfo
     {
         public int AspectRatioW { get; set; } = 0;
         public int AspectRatioH { get; set; } = 0;
         public long Duration { get; set; } = 0L;
-        public List<TwitterVideoVariant> Variants { get; } = new List<TwitterVideoVariant>();
+        public List<VideoVariant> Variants { get; } = new List<VideoVariant>();
 
-        public TwitterVideoInfo()
+        public VideoInfo()
         {
 
         }
 
-        public TwitterVideoInfo(JToken json)
+        public VideoInfo(JToken json)
         {
             var aspectRatio = json.Value<JArray>("aspect_ratio").Select(i => i.Value<int>()).ToArray();
             this.AspectRatioW = aspectRatio[0];
             this.AspectRatioH = aspectRatio[1];
             this.Duration = json.Value<long>("duration_millis");
-            this.Variants.AddRange(json.Value<JArray>("variants").Select(t => new TwitterVideoVariant(t)));
+            this.Variants.AddRange(json.Value<JArray>("variants").Select(t => new VideoVariant(t)));
         }
 
         public JObject ToJson() => new JObject()
