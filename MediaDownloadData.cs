@@ -5,22 +5,22 @@ using System.Text;
 
 namespace SNSDownloader
 {
-    public class DownloadData
+    public class MediaDownloadData
     {
         public Size Size { get; set; }
         public List<Uri> Segments { get; } = new List<Uri>();
 
-        public DownloadData()
+        public MediaDownloadData()
         {
 
         }
 
-        public DownloadData(params Uri[] segments)
+        public MediaDownloadData(params Uri[] segments)
         {
             this.Segments.AddRange(segments);
         }
 
-        public DownloadData(IEnumerable<Uri> segments)
+        public MediaDownloadData(IEnumerable<Uri> segments)
         {
             this.Segments.AddRange(segments);
         }

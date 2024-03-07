@@ -5,7 +5,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Text;
 
-namespace SNSDownloader
+namespace SNSDownloader.Net
 {
     public static class WebResponseExtensions
     {

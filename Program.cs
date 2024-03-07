@@ -9,19 +9,21 @@ using System.Threading;
 using Newtonsoft.Json.Linq;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
+using SNSDownloader.Net;
 using SNSDownloader.Tiktok;
 using SNSDownloader.Twitter;
+using SNSDownloader.Util;
 
 namespace SNSDownloader
 {
     public class Program
     {
-        public static string MapUriPrefix { get; } = "#EXT-X-MAP:URI";
         public static int DownloadBufferSize { get; } = 16 * 1024;
         public static Encoding UTF8WithoutBOM = new UTF8Encoding(false);
 
         private static readonly List<AbstractDownloader> Downloaders = new List<AbstractDownloader>();
-        private static TwitterDownloader TwitterDownloader;
+        private static TwitterTweetDownloader TwitterTweetDownloader;
+        private static TwitterTimelineDownloader TwitterTimelineDownloader;
         private static TiktokDownloader TiktokDownloader;
         private static IWebDriver Driver;
 
@@ -40,7 +42,8 @@ namespace SNSDownloader
 
             try
             {
-                Downloaders.Add(TwitterDownloader = new TwitterDownloader());
+                Downloaders.Add(TwitterTweetDownloader = new TwitterTweetDownloader());
+                Downloaders.Add(TwitterTimelineDownloader = new TwitterTimelineDownloader());
                 Downloaders.Add(TiktokDownloader = new TiktokDownloader());
 
                 Console.CancelKeyPress += (sender, e) => Driver.DisposeQuietly();
@@ -108,17 +111,26 @@ namespace SNSDownloader
                 return;
             }
 
+            var output = new DownloadOutput(progressed, Path.Combine(outputDirectory, downloader.PlatformName));
+            Directory.CreateDirectory(output.Directory);
+
             while (true)
             {
                 try
                 {
-                    downloader.Log("Fetching");
-                    Crawl(downloader, url);
+                    var ready = downloader.Ready(url);
+                    downloader.Log($"Ready: {ready}");
 
-                    if (downloader.Download(url, Directory.CreateDirectory(Path.Combine(outputDirectory, downloader.PlatformName)).FullName))
+                    if (ready == true)
                     {
-                        progressed.Add(url);
-                        break;
+                        Crawl(downloader);
+
+                        if (downloader.Download(output))
+                        {
+                            progressed.Add(url);
+                            break;
+                        }
+
                     }
 
                 }
@@ -135,9 +147,9 @@ namespace SNSDownloader
 
         }
 
-        private static void Crawl(IDownloader downloader, string url)
+        private static void Crawl(AbstractDownloader downloader)
         {
-            if (downloader == TwitterDownloader && !TwitterLogined)
+            if ((downloader == TwitterTweetDownloader || downloader == TwitterTimelineDownloader) && !TwitterLogined)
             {
                 RecreateDriver(TwitterLoginOptions);
                 Driver.Navigate().GoToUrl("https://twitter.com/i/flow/login/");
@@ -162,7 +174,7 @@ namespace SNSDownloader
             }
 
             ReaminCrawlCount--;
-            Driver.Navigate().GoToUrl(url);
+            Driver.Navigate().GoToUrl(downloader.GetRequestUrl());
         }
 
         private static void RecreateDriver(ChromeOptions options)
@@ -201,19 +213,14 @@ namespace SNSDownloader
             return driver;
         }
 
-        public static void DownloadLargest(string fileNamePrefix, string directory, IEnumerable<DownloadData> downloads)
+        public static void DownloadLargest(string directory, string fileNamePrefix, IEnumerable<MediaDownloadData> downloads)
         {
-            foreach (var download in downloads.OrderByDescending(o => o.Size.Width * o.Size.Height))
+            foreach (var download in downloads.Where(d => d.Segments.Count > 0).OrderByDescending(o => o.Size.Width * o.Size.Height))
             {
-                if (download.Segments.Count == 0)
-                {
-                    continue;
-                }
-
                 var fileName = $"{fileNamePrefix}_{download.Size.Width}x{download.Size.Height}_{Path.GetFileName(download.Segments[0].LocalPath)}";
 
                 using var mediaStream = new FileStream(Path.Combine(directory, fileName), FileMode.Create);
-                DownloadVideo(mediaStream, download.Segments);
+                DownloadSegments(mediaStream, download.Segments);
 
                 break;
             }
@@ -247,79 +254,37 @@ namespace SNSDownloader
 
         public static void DownloadSimpleMedia(string directory, string mediaFilePrefix, HttpWebResponse response) => DownloadSimpleMedia(Path.Combine(directory, $"{mediaFilePrefix}_{Path.GetFileName(response.ResponseUri.LocalPath)}"), response);
 
-        public static void DownloadVideo(Stream output, IEnumerable<Uri> segments)
+        public static void DownloadSegments(Stream output, IEnumerable<Uri> segments)
         {
             foreach (var segment in segments)
             {
-                using var segmentResponse = GetResponse(segment);
+                using var segmentResponse = CreateRequest(segment).GetWrappedResponse();
                 using var segmentResponseStream = segmentResponse.Response.ReadAsStream();
                 segmentResponseStream.CopyTo(output, DownloadBufferSize);
             }
 
         }
 
-        public static IEnumerable<string> GetM3U8Segments(HttpWebResponse response)
+        public static HttpWebRequest CreateRequest(string url) => WebRequest.CreateHttp(url);
+
+        public static HttpWebRequest CreateRequest(Uri uri) => WebRequest.CreateHttp(uri);
+
+        public static HttpWebRequest CreateRequest(NetworkRequestSentEventArgs e)
         {
-            using var responseReader = response.ReadAsReader(UTF8WithoutBOM);
+            var request = CreateRequest(e.RequestUrl);
+            Bind(request, e);
 
-            for (string line = null; (line = responseReader.ReadLine()) != null;)
-            {
-                if (line.StartsWith(MapUriPrefix) == true)
-                {
-                    //#EXT-X-MAP:URI=
-                    var mapUri = line[(MapUriPrefix.Length + 1)..];
-
-                    if (mapUri.StartsWith("\"") == true && mapUri.EndsWith("\"") == true)
-                    {
-                        yield return mapUri[1..^1];
-                    }
-                    else
-                    {
-                        yield return mapUri;
-                    }
-
-                }
-                else if (line.StartsWith("#") == true)
-                {
-                    continue;
-                }
-                else
-                {
-                    yield return line;
-                }
-
-            }
-
+            return request;
         }
 
-        public static WrappedResponse GetResponse(string url) => GetResponse(WebRequest.CreateHttp(url));
-
-        public static WrappedResponse GetResponse(Uri uri) => GetResponse(WebRequest.CreateHttp(uri));
-
-        public static WrappedResponse GetResponse(NetworkRequestSentEventArgs e)
+        public static void Bind(HttpWebRequest request, NetworkRequestSentEventArgs e)
         {
-            var request = WebRequest.CreateHttp(e.RequestUrl);
             request.Method = e.RequestMethod;
 
             foreach (var pair in e.RequestHeaders)
             {
                 request.Headers[pair.Key] = pair.Value;
             }
-
-            return GetResponse(request);
-        }
-
-        public static WrappedResponse GetResponse(HttpWebRequest request)
-        {
-            try
-            {
-                return new WrappedResponse(request, request.GetResponse() as HttpWebResponse, true);
-            }
-            catch (WebException e)
-            {
-                return new WrappedResponse(request, e.Response as HttpWebResponse, false);
-            }
-
         }
 
     }

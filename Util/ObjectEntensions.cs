@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace SNSDownloader
+namespace SNSDownloader.Util
 {
     public static class ObjectEntensions
     {

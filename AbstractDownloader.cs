@@ -6,21 +6,56 @@ using OpenQA.Selenium;
 
 namespace SNSDownloader
 {
-    public abstract class AbstractDownloader : IDownloader, IDisposable
+    public abstract class AbstractDownloader : IDisposable
     {
         public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(1.0D);
+
+        public bool IsReady { get; private set; }
+        protected string Url { get; private set; }
 
         public abstract string PlatformName { get; }
 
         public abstract void OnNetworkCreated(INetwork network);
 
-        public abstract void Reset();
+        public void Reset()
+        {
+            this.IsReady = false;
+            this.Url = string.Empty;
+            this.OnReset();
+        }
+
+        protected abstract void OnReset();
 
         public abstract bool Test(string url);
 
-        public abstract bool Download(string url, string outputDirectory);
+        public bool Ready(string url)
+        {
+            if (!this.Test(url))
+            {
+                return false;
+            }
+            else if (this.OnReady(url))
+            {
+                this.IsReady = true;
+                this.Url = url;
+                return true;
+            }
+            else
+            {
+                return false;
+            }
 
-        public void Log(string message) => Console.WriteLine($"[{this.PlatformName}] {message}");
+        }
+
+        protected abstract bool OnReady(string url);
+
+        public abstract bool Download(DownloadOutput output);
+
+        public virtual string GetRequestUrl() => this.Url;
+
+        public void Log() => Log(string.Empty);
+
+        public void Log<T>(T message) => Console.WriteLine($"[{this.PlatformName}] {message}");
 
         protected virtual void Dispose(bool disposing)
         {

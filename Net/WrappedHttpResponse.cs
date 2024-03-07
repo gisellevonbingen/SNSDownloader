@@ -2,16 +2,17 @@
 using System.Collections.Generic;
 using System.Net;
 using System.Text;
+using SNSDownloader.Util;
 
-namespace SNSDownloader
+namespace SNSDownloader.Net
 {
-    public class WrappedResponse : IDisposable
+    public class WrappedHttpResponse : IDisposable
     {
         public HttpWebRequest Request { get; }
         public HttpWebResponse Response { get; }
         public bool Success { get; }
 
-        public WrappedResponse(HttpWebRequest request, HttpWebResponse response, bool success)
+        public WrappedHttpResponse(HttpWebRequest request, HttpWebResponse response, bool success)
         {
             this.Request = request;
             this.Response = response;
@@ -29,7 +30,7 @@ namespace SNSDownloader
             this.Dispose(true);
         }
 
-        ~WrappedResponse()
+        ~WrappedHttpResponse()
         {
             this.Dispose(false);
         }

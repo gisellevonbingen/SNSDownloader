@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -10,37 +9,36 @@ using System.Threading;
 using System.Web;
 using Newtonsoft.Json.Linq;
 using OpenQA.Selenium;
+using SNSDownloader.M3U8;
+using SNSDownloader.Net;
+using SNSDownloader.Util;
 
 namespace SNSDownloader.Twitter
 {
-    public class TwitterDownloader : AbstractDownloader
+    public class TwitterTweetDownloader : AbstractDownloader
     {
-        public static string TweetIdGroup { get; } = "tweet_id";
-        public static Regex TiktokArticlePattern { get; } = new Regex("https:\\/\\/www\\.tiktok\\.com/(?<user_id>.+)/video/(?<article_id>.+)");
-        public static Regex XStatusPattern { get; } = new Regex($"https:\\/\\/x\\.com\\/(?<user_id>.+)\\/status\\/(?<{TweetIdGroup}>\\d+)(\\?.+)?");
-        public static Regex TweetStatusPattern { get; } = new Regex($"https:\\/\\/twitter\\.com\\/(?<user_id>.+)\\/status\\/(?<{TweetIdGroup}>\\d+)(\\?.+)?");
-        public static IEnumerable<Regex> TweetStatusPatterns { get; } = new[] { XStatusPattern, TweetStatusPattern };
         public static Regex TweetDetailPattern { get; } = new Regex("https:\\/\\/twitter\\.com\\/i\\/api\\/graphql\\/.+\\/TweetDetail");
         public static Regex SrcPattern { get; } = new Regex("src=\"(?<src>[^\"]+)\"");
         public static Regex SizePattern { get; } = new Regex("(?<width>\\d+)x(?<height>\\d+)");
 
+
         private readonly List<TimelineEntry> Entires;
         private readonly AutoResetEvent ResetEvent;
 
-        public TwitterDownloader()
+        public TwitterTweetDownloader()
         {
             this.Entires = new List<TimelineEntry>();
             this.ResetEvent = new AutoResetEvent(false);
         }
 
-        public override string PlatformName => "Twitter";
+        public override string PlatformName => "TwitterTweet";
 
         public override void OnNetworkCreated(INetwork network)
         {
             network.NetworkResponseReceived += this.OnNetowrkResponseReceived;
         }
 
-        public override void Reset()
+        protected override void OnReset()
         {
             this.Entires.Clear();
             this.ResetEvent.Reset();
@@ -50,17 +48,15 @@ namespace SNSDownloader.Twitter
 
         public bool Test(string url, out string id)
         {
-            id = this.GetTweetId(url);
+            id = TwitterUtils.GetTweetId(url);
             return !string.IsNullOrEmpty(id);
         }
 
-        public override bool Download(string url, string outputDirectory)
+        protected override bool OnReady(string url) => true;
+
+        public override bool Download(DownloadOutput output)
         {
-            if (!this.Test(url, out var id))
-            {
-                return false;
-            }
-            else if (!this.WaitAll(this.ResetEvent))
+            if (!this.WaitAll(this.ResetEvent))
             {
                 return false;
             }
@@ -71,37 +67,24 @@ namespace SNSDownloader.Twitter
             }
             else
             {
+                var id = TwitterUtils.GetTweetId(this.Url);
+
                 this.Log($"Found : {this.Entires.Count}");
-                this.DownloadTweet(id, outputDirectory);
+                this.DownloadTweet(id, output.Directory);
                 return true;
             }
 
-        }
-
-        private string GetTweetId(string url)
-        {
-            foreach (var pattern in TweetStatusPatterns)
-            {
-                var statusMatch = pattern.Match(url);
-
-                if (statusMatch.Success == true)
-                {
-                    return statusMatch.Groups[TweetIdGroup].Value;
-                }
-
-            }
-
-            return null;
         }
 
         private void DownloadTweet(string tweetId, string baseDirectory)
         {
             var tweets = this.Entires.Select(i => i.Content).OfType<TimelineEntryContentItem>().Select(item => item.Tweet).Where(t => t != null).ToArray();
             var found = tweets.FirstOrDefault(i => i.Id.Equals(tweetId));
-            var directory = Path.Combine(baseDirectory, found.User.ScreenName, $"{found.CreatedAt.ToLocalTime():yyyy-MM}");
+            var createdAt = found.CreatedAt.ToLocalTime();
+            var directory = Path.Combine(baseDirectory, found.User.ScreenName, $"{createdAt.ToYearMonthString()}");
             Directory.CreateDirectory(directory);
 
-            var tweetPrefix = $"{found.CreatedAt.ToLocalTime():yyyyMMdd_HHmmss}_{found.User.ScreenName}_{tweetId}";
+            var tweetPrefix = $"{createdAt.ToFileNameString()}_{found.User.ScreenName}_{tweetId}";
             var downladIndex = 0;
             using var tweetStream = new FileStream(Path.Combine(directory, $"{tweetPrefix}.txt"), FileMode.Create);
             using var tweetWriter = new StreamWriter(tweetStream, Program.UTF8WithoutBOM);
@@ -141,8 +124,8 @@ namespace SNSDownloader.Twitter
 
         private void WriteTweet(TextWriter tweetWriter, TimelineTweet tweet)
         {
-            tweetWriter.WriteLine($"CreatedAt: {tweet.CreatedAt:yyyy-MM-dd HH:mm:ss}");
-            tweetWriter.WriteLine($"Url: https://twitter.com/{tweet.User.ScreenName}/status/{tweet.Id}");
+            tweetWriter.WriteLine($"CreatedAt: {tweet.CreatedAt.ToStandardString()}");
+            tweetWriter.WriteLine($"Url: {TwitterUtils.GetStatusUrl(tweet)}");
             tweetWriter.WriteLine($"User: {tweet.User.Name}(@{tweet.User.ScreenName})");
             tweetWriter.WriteLine($"Id: {tweet.Id}");
             tweetWriter.WriteLine($"Quoted: {tweet.Quoted}");
@@ -161,7 +144,7 @@ namespace SNSDownloader.Twitter
         {
             if (media is MediaEntityPhoto photo)
             {
-                using var response = Program.GetResponse(photo.RequestUrl);
+                using var response = Program.CreateRequest(photo.RequestUrl).GetWrappedResponse();
 
                 if (response.Success == true)
                 {
@@ -171,7 +154,7 @@ namespace SNSDownloader.Twitter
             }
             else if (media is MediaEntityTwitPic twitpic)
             {
-                using var page = Program.GetResponse(twitpic.Url);
+                using var page = Program.CreateRequest(twitpic.Url).GetWrappedResponse();
 
                 if (page.Success == true)
                 {
@@ -179,7 +162,7 @@ namespace SNSDownloader.Twitter
                     var groups = SrcPattern.Match(html).Groups;
                     var src = groups["src"].Value;
 
-                    using var response = Program.GetResponse(src);
+                    using var response = Program.CreateRequest(src).GetWrappedResponse();
 
                     if (response.Success == true)
                     {
@@ -199,22 +182,22 @@ namespace SNSDownloader.Twitter
 
         }
 
-        private IEnumerable<DownloadData> GetDownloadDataList(MediaEntityVideo video, VideoVariant variant)
+        private IEnumerable<MediaDownloadData> GetDownloadDataList(MediaEntityVideo video, VideoVariant variant)
         {
             if (variant.ContentType.Equals("video/mp4") == true)
             {
                 var size = this.ParseSize(variant.Url);
-                yield return new DownloadData(new Uri(variant.Url)) { Size = size };
+                yield return new MediaDownloadData(new Uri(variant.Url)) { Size = size };
             }
             else if (variant.ContentType.Equals("application/x-mpegURL") == true)
             {
                 var variantUri = new Uri(variant.Url);
-                using var response = Program.GetResponse(variantUri);
+                using var response = Program.CreateRequest(variantUri).GetWrappedResponse();
                 using var responseReader = response.Response.ReadAsReader(Program.UTF8WithoutBOM);
 
                 for (string line = null; (line = responseReader.ReadLine()) != null;)
                 {
-                    if (line.StartsWith("#") == true)
+                    if (line.StartsWith("#"))
                     {
                         continue;
                     }
@@ -231,9 +214,10 @@ namespace SNSDownloader.Twitter
                     }
 
                     var m3u8Uri = new Uri(variantUri, line);
-                    using var m3u8Response = Program.GetResponse(m3u8Uri);
-                    var segments = Program.GetM3U8Segments(m3u8Response.Response).Select(s => new Uri(m3u8Uri, s));
-                    yield return new DownloadData(segments) { Size = size };
+                    using var m3u8Response = Program.CreateRequest(m3u8Uri).GetWrappedResponse();
+                    using var m3u8Reader = m3u8Response.Response.ReadAsReader(Program.UTF8WithoutBOM);
+                    var segments = M3U8Utils.GetSegments(m3u8Reader).Select(s => new Uri(m3u8Uri, s)).ToArray();
+                    yield return new MediaDownloadData(segments) { Size = size };
                 }
 
             }
@@ -254,7 +238,11 @@ namespace SNSDownloader.Twitter
 
         private void OnNetowrkResponseReceived(object sender, NetworkResponseReceivedEventArgs e)
         {
-            if (TweetDetailPattern.IsMatch(e.ResponseUrl) == false || string.IsNullOrEmpty(e.ResponseBody) == true)
+            if (!this.IsReady)
+            {
+                return;
+            }
+            else if (TweetDetailPattern.IsMatch(e.ResponseUrl) == false || string.IsNullOrEmpty(e.ResponseBody) == true)
             {
                 return;
             }
@@ -264,34 +252,11 @@ namespace SNSDownloader.Twitter
 
             if (instructions != null)
             {
-                this.Set(GetTimelineEntries(body));
+                this.Set(TwitterUtils.GetTimelineEntries(instructions));
             }
             else
             {
                 this.Set(Enumerable.Empty<TimelineEntry>());
-            }
-
-        }
-
-        private IEnumerable<TimelineEntry> GetTimelineEntries(JToken instructions)
-        {
-            foreach (var instruction in instructions)
-            {
-                var instructionType = instruction.Value<string>("type");
-
-                if (string.Equals(instructionType, "TimelineAddEntries"))
-                {
-                    foreach (var entry in instruction.Value<JArray>("entries"))
-                    {
-                        yield return new TimelineEntry(entry);
-                    }
-
-                }
-                else if (string.Equals(instructionType, "TimelineReplaceEntry"))
-                {
-                    yield return new TimelineEntry(instruction.Value<JToken>("entry"));
-                }
-
             }
 
         }

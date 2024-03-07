@@ -8,6 +8,8 @@ using System.Threading;
 using HtmlAgilityPack;
 using Newtonsoft.Json.Linq;
 using OpenQA.Selenium;
+using SNSDownloader.Net;
+using SNSDownloader.Util;
 
 namespace SNSDownloader.Tiktok
 {
@@ -21,7 +23,7 @@ namespace SNSDownloader.Tiktok
         private readonly AutoResetEvent VideoResetEvent;
 
         private JToken Item;
-        private WrappedResponse Video;
+        private WrappedHttpResponse Video;
 
         public TiktokDownloader()
         {
@@ -40,7 +42,7 @@ namespace SNSDownloader.Tiktok
             network.NetworkResponseReceived += this.OnNetworkResponseReceived;
         }
 
-        public override void Reset()
+        protected override void OnReset()
         {
             this.Item = null;
             this.Video.DisposeQuietly();
@@ -53,17 +55,18 @@ namespace SNSDownloader.Tiktok
 
         public bool Test(string url, out string id)
         {
-            id = ArticlePattern.Match(url).Groups["article_id"].Value;
+            id = this.GetArticleId(url);
             return !string.IsNullOrEmpty(id);
         }
 
-        public override bool Download(string url, string baseDirectory)
+        public string GetArticleId(string url) => ArticlePattern.Match(url).Groups["article_id"].Value;
+
+        protected override bool OnReady(string url) => true;
+
+
+        public override bool Download(DownloadOutput output)
         {
-            if (!this.Test(url, out var id))
-            {
-                return false;
-            }
-            else if (!this.WaitAll(this.ItemResetEvent, this.VideoResetEvent))
+            if (!this.WaitAll(this.ItemResetEvent, this.VideoResetEvent))
             {
                 return false;
             }
@@ -76,18 +79,21 @@ namespace SNSDownloader.Tiktok
             {
                 this.Log($"Found");
 
-                var dateTime = DateTimeOffset.UnixEpoch.Add(TimeSpan.FromSeconds(this.Item["createTime"].Value<int>())).ToLocalTime();
+                var url = this.Url;
+                var id = this.GetArticleId(url);
+
+                var dateTime = DateTimeOffset.UnixEpoch.Add(TimeSpan.FromSeconds(this.Item["createTime"].Value<int>())).LocalDateTime;
                 var authorId = this.Item["author"]["uniqueId"].Value<string>();
                 var authorNickname = this.Item["author"]["nickname"].Value<string>();
 
-                var fileprefix = $"{dateTime:yyyyMMdd_HHmmss}_{authorId}_{id}";
+                var fileprefix = $"{dateTime.ToFileNameString()}_{authorId}_{id}";
 
-                var directory = Path.Combine(baseDirectory, $"{dateTime.ToLocalTime():yyyy-MM}");
+                var directory = Path.Combine(output.Directory, $"{dateTime.ToYearMonthString()}");
                 Directory.CreateDirectory(directory);
 
                 using var fs = new FileStream(Path.Combine(directory, $"{fileprefix}.txt"), FileMode.Create);
                 using var wrier = new StreamWriter(fs, Program.UTF8WithoutBOM);
-                wrier.WriteLine($"CreatedAt: {dateTime:yyyy-MM-dd HH:mm:ss}");
+                wrier.WriteLine($"CreatedAt: {dateTime.ToStandardString()}");
                 wrier.WriteLine($"Url: {url}");
                 wrier.WriteLine($"User: {authorNickname}(@{authorId})");
                 wrier.WriteLine($"Id: {id}");
@@ -102,9 +108,13 @@ namespace SNSDownloader.Tiktok
 
         private void OnNetworkRequestSent(object sender, NetworkRequestSentEventArgs e)
         {
-            if (e.RequestUrl.StartsWith("https://v16-webapp-prime.tiktok.com/video"))
+            if (!this.IsReady)
             {
-                var response = Program.GetResponse(e);
+                return;
+            }
+            else if (e.RequestUrl.StartsWith("https://v16-webapp-prime.tiktok.com/video"))
+            {
+                var response = Program.CreateRequest(e).GetWrappedResponse();
                 this.SetVideo(response);
             }
 
@@ -112,7 +122,11 @@ namespace SNSDownloader.Tiktok
 
         private void OnNetworkResponseReceived(object sender, NetworkResponseReceivedEventArgs e)
         {
-            if (ArticlePattern.IsMatch(e.ResponseUrl) == true)
+            if (!this.IsReady)
+            {
+                return;
+            }
+            else if (ArticlePattern.IsMatch(e.ResponseUrl) == true)
             {
                 var document = new HtmlDocument();
                 document.LoadHtml(e.ResponseBody);
@@ -133,7 +147,7 @@ namespace SNSDownloader.Tiktok
 
         }
 
-        public void SetVideo(WrappedResponse video)
+        public void SetVideo(WrappedHttpResponse video)
         {
             lock (this.SyncRoot)
             {

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-namespace SNSDownloader
+namespace SNSDownloader.IO
 {
     public static class StreamExtensions
     {
