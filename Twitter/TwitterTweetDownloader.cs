@@ -9,7 +9,6 @@ using System.Threading;
 using System.Web;
 using Newtonsoft.Json.Linq;
 using OpenQA.Selenium;
-using SNSDownloader.M3U8;
 using SNSDownloader.Net;
 using SNSDownloader.Util;
 
@@ -148,7 +147,7 @@ namespace SNSDownloader.Twitter
 
                 if (response.Success == true)
                 {
-                    Program.DownloadSimpleMedia(directory, mediaFilePrefix, response.Response);
+                    Program.Download(directory, mediaFilePrefix, response.Response);
                 }
 
             }
@@ -166,7 +165,7 @@ namespace SNSDownloader.Twitter
 
                     if (response.Success == true)
                     {
-                        Program.DownloadSimpleMedia(directory, mediaFilePrefix, response.Response);
+                        Program.Download(directory, mediaFilePrefix, response.Response);
                     }
 
                 }
@@ -186,40 +185,11 @@ namespace SNSDownloader.Twitter
         {
             if (variant.ContentType.Equals("video/mp4") == true)
             {
-                var size = this.ParseSize(variant.Url);
-                yield return new MediaDownloadData(new Uri(variant.Url)) { Size = size };
+                yield return new MediaDownloadData() { Type = MediaDownloadData.DownloadType.Blob, Url = variant.Url, Size = this.ParseSize(variant.Url) };
             }
             else if (variant.ContentType.Equals("application/x-mpegURL") == true)
             {
-                var variantUri = new Uri(variant.Url);
-                using var response = Program.CreateRequest(variantUri).GetWrappedResponse();
-                using var responseReader = response.Response.ReadAsReader(Program.UTF8WithoutBOM);
-
-                for (string line = null; (line = responseReader.ReadLine()) != null;)
-                {
-                    if (line.StartsWith("#"))
-                    {
-                        continue;
-                    }
-
-                    var size = video.OriginalSize;
-
-                    try
-                    {
-                        size = this.ParseSize(line);
-                    }
-                    catch (Exception)
-                    {
-
-                    }
-
-                    var m3u8Uri = new Uri(variantUri, line);
-                    using var m3u8Response = Program.CreateRequest(m3u8Uri).GetWrappedResponse();
-                    using var m3u8Reader = m3u8Response.Response.ReadAsReader(Program.UTF8WithoutBOM);
-                    var segments = M3U8Utils.GetSegments(m3u8Reader).Select(s => new Uri(m3u8Uri, s)).ToArray();
-                    yield return new MediaDownloadData(segments) { Size = size };
-                }
-
+                yield return new MediaDownloadData() { Type = MediaDownloadData.DownloadType.M3U, Url = variant.Url, Size = video.OriginalSize };
             }
             else
             {

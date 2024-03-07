@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -32,9 +33,18 @@ namespace SNSDownloader
 
         private static int ReaminCrawlCount = 0;
         private static bool TwitterLogined = false;
+        private static bool FFmpegEntered = false;
+
+        public static string ConfigPath { get; } = Path.Combine(Directory.GetCurrentDirectory(), "Config.json");
+        public static Config Config { get; } = new Config();
 
         public static void Main()
         {
+            if (!ReloadConfig())
+            {
+                return;
+            }
+
             TwitterLoginOptions = new ChromeOptions();
 
             CrawlOptions = new ChromeOptions();
@@ -46,7 +56,7 @@ namespace SNSDownloader
                 Downloaders.Add(TwitterTimelineDownloader = new TwitterTimelineDownloader());
                 Downloaders.Add(TiktokDownloader = new TiktokDownloader());
 
-                Console.CancelKeyPress += (sender, e) => Driver.DisposeQuietly();
+                AppDomain.CurrentDomain.ProcessExit += (sender, e) => Driver.DisposeQuietly();
 
                 Run();
             }
@@ -56,6 +66,38 @@ namespace SNSDownloader
                 Driver.DisposeQuietly();
             }
 
+        }
+
+        public static bool ReloadConfig()
+        {
+            if (File.Exists(ConfigPath))
+            {
+                try
+                {
+                    var json = JObject.Parse(File.ReadAllText(ConfigPath));
+                    Config.Load(json);
+                    return true;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    return false;
+                }
+
+            }
+            else
+            {
+                SaveConfig();
+                return true;
+            }
+
+        }
+
+        private static void SaveConfig()
+        {
+            var json = new JObject();
+            Config.Save(json);
+            File.WriteAllText(ConfigPath, json.ToString());
         }
 
         private static void Run()
@@ -215,12 +257,10 @@ namespace SNSDownloader
 
         public static void DownloadLargest(string directory, string fileNamePrefix, IEnumerable<MediaDownloadData> downloads)
         {
-            foreach (var download in downloads.Where(d => d.Segments.Count > 0).OrderByDescending(o => o.Size.Width * o.Size.Height))
+            foreach (var download in downloads.OrderByDescending(o => o.Size.Width * o.Size.Height))
             {
-                var fileName = $"{fileNamePrefix}_{download.Size.Width}x{download.Size.Height}_{Path.GetFileName(download.Segments[0].LocalPath)}";
-
-                using var mediaStream = new FileStream(Path.Combine(directory, fileName), FileMode.Create);
-                DownloadSegments(mediaStream, download.Segments);
+                var path = Path.Combine(directory, $"{fileNamePrefix}_{download.Size.Width}x{download.Size.Height}_{Path.GetFileName(new Uri(download.Url).LocalPath)}");
+                DownloadMedia(path, download);
 
                 break;
             }
@@ -245,22 +285,49 @@ namespace SNSDownloader
 
         }
 
-        public static void DownloadSimpleMedia(string path, HttpWebResponse response)
+        public static void Download(string path, HttpWebResponse response)
         {
-            using var responseStream = response.ReadAsStream();
             using var mediaStream = new FileStream(path, FileMode.Create);
-            responseStream.CopyTo(mediaStream, DownloadBufferSize);
+            Download(mediaStream, response);
         }
 
-        public static void DownloadSimpleMedia(string directory, string mediaFilePrefix, HttpWebResponse response) => DownloadSimpleMedia(Path.Combine(directory, $"{mediaFilePrefix}_{Path.GetFileName(response.ResponseUri.LocalPath)}"), response);
-
-        public static void DownloadSegments(Stream output, IEnumerable<Uri> segments)
+        public static void Download(Stream output, HttpWebResponse response)
         {
-            foreach (var segment in segments)
+            using var responseStream = response.ReadAsStream();
+            responseStream.CopyTo(output, DownloadBufferSize);
+        }
+
+        public static void Download(string directory, string fileNamePrefix, HttpWebResponse response) => Download(Path.Combine(directory, $"{fileNamePrefix}_{Path.GetFileName(response.ResponseUri.LocalPath)}"), response);
+
+        public static void DownloadMedia(string path, MediaDownloadData downloadData)
+        {
+            if (downloadData.Type == MediaDownloadData.DownloadType.Blob)
             {
-                using var segmentResponse = CreateRequest(segment).GetWrappedResponse();
-                using var segmentResponseStream = segmentResponse.Response.ReadAsStream();
-                segmentResponseStream.CopyTo(output, DownloadBufferSize);
+                using var response = CreateRequest(downloadData.Url).GetWrappedResponse();
+                Download(path, response.Response);
+            }
+            else if (downloadData.Type == MediaDownloadData.DownloadType.M3U)
+            {
+                while (!FFmpegEntered && (string.IsNullOrEmpty(Config.FFmpegPath) || !File.Exists(Config.FFmpegPath)))
+                {
+                    Console.WriteLine($"Need FFmpeg for download media: {downloadData.Url}");
+                    Console.WriteLine("Enter FFmpeg.exe path");
+                    Console.WriteLine("Empty to skip");
+                    Console.Write(">");
+                    Config.FFmpegPath = Console.ReadLine();
+
+                    if (string.IsNullOrEmpty(Config.FFmpegPath) || File.Exists(Config.FFmpegPath))
+                    {
+                        FFmpegEntered = true;
+                        SaveConfig();
+                        break;
+                    }
+
+                }
+
+                path = Path.ChangeExtension(path, ".mp4");
+                using var process = Process.Start(new ProcessStartInfo(Config.FFmpegPath, $"-i \"{downloadData.Url}\" -c copy \"{path}\""));
+                process.WaitForExit();
             }
 
         }

@@ -7,22 +7,14 @@ namespace SNSDownloader
 {
     public class MediaDownloadData
     {
+        public DownloadType Type { get; set; }
+        public string Url { get; set; }
         public Size Size { get; set; }
-        public List<Uri> Segments { get; } = new List<Uri>();
 
-        public MediaDownloadData()
+        public enum DownloadType
         {
-
-        }
-
-        public MediaDownloadData(params Uri[] segments)
-        {
-            this.Segments.AddRange(segments);
-        }
-
-        public MediaDownloadData(IEnumerable<Uri> segments)
-        {
-            this.Segments.AddRange(segments);
+            Blob = 0,
+            M3U = 1,
         }
 
     }
