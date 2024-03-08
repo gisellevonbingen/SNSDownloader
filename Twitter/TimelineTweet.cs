@@ -23,8 +23,10 @@ namespace SNSDownloader.Twitter
 
         public TimelineTweet(JToken itemContent)
         {
-            var core = itemContent.SelectToken("tweet_results.result.legacy");
-            var user = itemContent.SelectToken("tweet_results.result.core.user_results.result.legacy");
+            var result = itemContent.SelectToken("tweet_results.result");
+            var tweet = GetTweetJson(result);
+            var core = tweet.SelectToken("legacy");
+            var user = tweet.SelectToken("core.user_results.result.legacy");
 
             this.Id = core.Value<string>("id_str");
             this.User = new UserData(user);
@@ -83,6 +85,13 @@ namespace SNSDownloader.Twitter
             }
 
         }
+
+        private static JToken GetTweetJson(JToken result) => result.Value<string>("__typename") switch
+        {
+            "Tweet" => result,
+            "TweetWithVisibilityResults" => result["tweet"],
+            _ => throw new ArgumentOutOfRangeException($"Unknown TweetResult Typename: {result.Value<string>("__typename")}")
+        };
 
     }
 
