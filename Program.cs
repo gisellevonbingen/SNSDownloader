@@ -109,7 +109,7 @@ namespace SNSDownloader
             var outputDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Output");
             Directory.CreateDirectory(outputDirectory);
 
-            var inputs = Directory.GetFiles(inputDirectory, "*.json");
+            var inputs = Directory.GetFiles(inputDirectory, "*.json", SearchOption.AllDirectories);
             var progressed = new ProgressTracker(Path.Combine(inputDirectory, "progress.txt"));
 
             Console.WriteLine($"Found input files: {inputs.Length}");
