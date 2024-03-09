@@ -5,14 +5,14 @@ using Newtonsoft.Json.Linq;
 
 namespace SNSDownloader.Twitter
 {
-    public abstract class TimelineEntryContent
+    public class TweetResultTombstone : TweetResult
     {
-        public TimelineEntryContent()
+        public TweetResultTombstone()
         {
 
         }
 
-        public TimelineEntryContent(JToken content)
+        public TweetResultTombstone(JToken json) : base(json)
         {
 
         }

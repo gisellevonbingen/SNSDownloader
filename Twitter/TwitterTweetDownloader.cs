@@ -77,8 +77,8 @@ namespace SNSDownloader.Twitter
 
         private void DownloadTweet(string tweetId, string baseDirectory)
         {
-            var tweets = this.Entires.Select(i => i.Content).OfType<TimelineEntryContentItem>().Select(item => item.Tweet).Where(t => t != null).ToArray();
-            var found = tweets.FirstOrDefault(i => i.Id.Equals(tweetId));
+            var results = this.Entires.Select(i => i.Content).OfType<TimelineEntryContentItem>().Select(item => item.Result).Where(t => t != null).ToArray();
+            var found = results.OfType<TweetResultTweet>().FirstOrDefault(i => i.Id.Equals(tweetId));
             var createdAt = found.CreatedAt.ToLocalTime();
             var directory = Path.Combine(baseDirectory, found.User.ScreenName, $"{createdAt.ToYearMonthString()}");
             Directory.CreateDirectory(directory);
@@ -89,39 +89,49 @@ namespace SNSDownloader.Twitter
             using var tweetWriter = new StreamWriter(tweetStream, Program.UTF8WithoutBOM);
             var mediaUrls = new HashSet<string>();
 
-            for (var ti = 0; ti < tweets.Length; ti++)
+            for (var ti = 0; ti < results.Length; ti++)
             {
-                var tweet = tweets[ti];
-                this.Log($"Media found : {tweet.Media.Count}");
+                var result = results[ti];
 
+                if (ti > 0)
                 {
-                    if (ti > 0)
-                    {
-                        tweetWriter.WriteLine();
-                        tweetWriter.WriteLine(new string('=', 40));
-                        tweetWriter.WriteLine();
-                    }
-
-                    this.WriteTweet(tweetWriter, tweet);
+                    tweetWriter.WriteLine();
+                    tweetWriter.WriteLine(new string('=', 40));
+                    tweetWriter.WriteLine();
                 }
 
-                foreach (var media in tweet.Media)
+                if (result is TweetResultTweet tweet)
                 {
-                    if (mediaUrls.Contains(media.Url) == true)
+                    this.Log($"Media found : {tweet.Media.Count}");
+                    this.WriteTweet(tweetWriter, tweet);
+
+                    foreach (var media in tweet.Media)
                     {
-                        continue;
+                        if (mediaUrls.Contains(media.Url) == true)
+                        {
+                            continue;
+                        }
+
+                        var mediaFilePrefix = $"{tweetPrefix}_{++downladIndex}";
+                        this.DownloadMedia(directory, mediaFilePrefix, media);
+                        mediaUrls.Add(media.Url);
                     }
 
-                    var mediaFilePrefix = $"{tweetPrefix}_{++downladIndex}";
-                    this.DownloadMedia(directory, mediaFilePrefix, media);
-                    mediaUrls.Add(media.Url);
+                }
+                else if (result is TweetResultTombstone tombstone)
+                {
+                    tweetWriter.WriteLine("$Tombstone$");
+                }
+                else
+                {
+                    throw new Exception($"Unknown {nameof(TweetResult)}: {result}");
                 }
 
             }
 
         }
 
-        private void WriteTweet(TextWriter tweetWriter, TimelineTweet tweet)
+        private void WriteTweet(TextWriter tweetWriter, TweetResultTweet tweet)
         {
             tweetWriter.WriteLine($"CreatedAt: {tweet.CreatedAt.ToStandardString()}");
             tweetWriter.WriteLine($"Url: {TwitterUtils.GetStatusUrl(tweet)}");
@@ -217,16 +227,24 @@ namespace SNSDownloader.Twitter
                 return;
             }
 
-            var body = JObject.Parse(e.ResponseBody);
-            var instructions = body.SelectToken("data.threaded_conversation_with_injections_v2.instructions");
+            try
+            {
+                var body = JObject.Parse(e.ResponseBody);
+                var instructions = body.SelectToken("data.threaded_conversation_with_injections_v2.instructions");
 
-            if (instructions != null)
-            {
-                this.Set(TwitterUtils.GetTimelineEntries(instructions));
+                if (instructions != null)
+                {
+                    this.Set(TwitterUtils.GetTimelineEntries(instructions));
+                }
+                else
+                {
+                    this.Set(Enumerable.Empty<TimelineEntry>());
+                }
+
             }
-            else
+            catch (Exception ex)
             {
-                this.Set(Enumerable.Empty<TimelineEntry>());
+                this.Log($"{e.ResponseUrl} - {ex}");
             }
 
         }

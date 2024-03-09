@@ -6,7 +6,7 @@ using Newtonsoft.Json.Linq;
 
 namespace SNSDownloader.Twitter
 {
-    public class TimelineTweet
+    public class TweetResultTweet : TweetResult
     {
         public string Id { get; set; } = string.Empty;
         public UserData User { get; set; } = new UserData();
@@ -16,17 +16,15 @@ namespace SNSDownloader.Twitter
         public List<UrlData> Url { get; } = new List<UrlData>();
         public List<MediaEntity> Media { get; } = new List<MediaEntity>();
 
-        public TimelineTweet()
+        public TweetResultTweet()
         {
 
         }
 
-        public TimelineTweet(JToken itemContent)
+        public TweetResultTweet(JToken json) : base(json)
         {
-            var result = itemContent.SelectToken("tweet_results.result");
-            var tweet = GetTweetJson(result);
-            var core = tweet.SelectToken("legacy");
-            var user = tweet.SelectToken("core.user_results.result.legacy");
+            var core = json.SelectToken("legacy");
+            var user = json.SelectToken("core.user_results.result.legacy");
 
             this.Id = core.Value<string>("id_str");
             this.User = new UserData(user);
@@ -85,13 +83,6 @@ namespace SNSDownloader.Twitter
             }
 
         }
-
-        private static JToken GetTweetJson(JToken result) => result.Value<string>("__typename") switch
-        {
-            "Tweet" => result,
-            "TweetWithVisibilityResults" => result["tweet"],
-            _ => throw new ArgumentOutOfRangeException($"Unknown TweetResult Typename: {result.Value<string>("__typename")}")
-        };
 
     }
 

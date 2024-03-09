@@ -5,7 +5,7 @@ using System.Text;
 
 namespace SNSDownloader.Twitter
 {
-    public class MediaEntity
+    public abstract class MediaEntity
     {
         public string Url { get; set; } = string.Empty;
 

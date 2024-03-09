@@ -15,10 +15,10 @@ namespace SNSDownloader.Twitter
 
         }
 
-        public TimelineEntryContentCursor(JToken json) : base(json)
+        public TimelineEntryContentCursor(JToken content) : base(content)
         {
-            this.Value = json.Value<string>("value");
-            this.CursorType = json.Value<string>("cursorType");
+            this.Value = content.Value<string>("value");
+            this.CursorType = content.Value<string>("cursorType");
         }
 
     }

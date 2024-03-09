@@ -26,20 +26,13 @@ namespace SNSDownloader.Twitter
         public static TimelineEntryContent GetContent(JToken content)
         {
             var entryType = content?.Value<string>("entryType");
-
-            if (string.Equals(entryType, "TimelineTimelineItem") == true)
+            return entryType switch
             {
-                return new TimelineEntryContentItem(content);
-            }
-            else if (string.Equals(entryType, "TimelineTimelineCursor"))
-            {
-                return new TimelineEntryContentCursor(content);
-            }
-            else
-            {
-                throw new Exception($"Unknown entryType: {entryType}");
-            }
-
+                "TimelineTimelineItem" => new TimelineEntryContentItem(content),
+                "TimelineTimelineCursor" => new TimelineEntryContentCursor(content),
+                "TimelineTimelineModule" => new TimelineEntryContentUnknown(content),
+                _ => throw new Exception($"Unknown entryType: {entryType}"),
+            };
         }
 
     }

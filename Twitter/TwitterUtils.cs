@@ -13,7 +13,7 @@ namespace SNSDownloader.Twitter
         public static Regex TweetStatusPattern { get; } = new Regex($"https:\\/\\/twitter\\.com\\/(?<user_id>.+)\\/status\\/(?<{TweetIdGroup}>\\d+)(\\?.+)?");
         public static IEnumerable<Regex> TweetStatusPatterns { get; } = new[] { XStatusPattern, TweetStatusPattern };
 
-        public static string GetStatusUrl(TimelineTweet tweet) => GetStatusUrl(tweet.User.ScreenName, tweet.Id);
+        public static string GetStatusUrl(TweetResultTweet tweet) => GetStatusUrl(tweet.User.ScreenName, tweet.Id);
 
         public static string GetStatusUrl(string screenName, string tweetId) => $"https://twitter.com/{screenName}/status/{tweetId}";
 

@@ -154,21 +154,21 @@ namespace SNSDownloader.Twitter
 
         }
 
-        private (List<TimelineTweet> Tweets, string Cursor) GetTweetsAndNextCursor(JObject body)
+        private (List<TweetResultTweet> Tweets, string Cursor) GetTweetsAndNextCursor(JObject body)
         {
             var instructions = body.SelectToken("data.search_by_raw_query.search_timeline.timeline.instructions");
 
             var entires = TwitterUtils.GetTimelineEntries(instructions);
-            var tweets = new List<TimelineTweet>();
+            var tweets = new List<TweetResultTweet>();
             var bottom = string.Empty;
 
             foreach (var entry in entires)
             {
                 if (entry.Content is TimelineEntryContentItem item)
                 {
-                    if (item.Tweet != null)
+                    if (item.Result is TweetResultTweet tweet)
                     {
-                        tweets.Add(item.Tweet);
+                        tweets.Add(tweet);
                     }
 
                 }
