@@ -56,6 +56,7 @@ namespace SNSDownloader
                 Downloaders.Add(TwitterTimelineDownloader = new TwitterTimelineDownloader());
                 Downloaders.Add(TiktokDownloader = new TiktokDownloader());
 
+                Console.CancelKeyPress += (sender, e) => Driver.DisposeQuietly();
                 AppDomain.CurrentDomain.ProcessExit += (sender, e) => Driver.DisposeQuietly();
 
                 Run();
@@ -76,6 +77,7 @@ namespace SNSDownloader
                 {
                     var json = JObject.Parse(File.ReadAllText(ConfigPath));
                     Config.Load(json);
+                    SaveConfig();
                     return true;
                 }
                 catch (Exception e)
@@ -113,6 +115,8 @@ namespace SNSDownloader
             Console.WriteLine($"Found input files: {inputs.Length}");
             Console.WriteLine();
 
+            var skippedCount = 0;
+
             for (var di = 0; di < inputs.Length; di++)
             {
                 var input = inputs[di];
@@ -121,29 +125,54 @@ namespace SNSDownloader
                 for (var ui = 0; ui < urls.Count; ui++)
                 {
                     var url = urls[ui];
+                    var skip = progressed.Contains(url);
 
-                    Console.WriteLine($"Input: {di + 1} / {inputs.Length}, {(di + 1) / (inputs.Length / 100.0F):F2}%");
-                    Console.WriteLine($"=> {input}");
-                    Console.WriteLine($"Url: {ui + 1} / {urls.Count}, {(ui + 1) / (urls.Count / 100.0F):F2}%");
-                    Console.WriteLine($"=> {url}");
+                    if (!skip || Config.LogSkipped)
+                    {
+                        if (skippedCount > 0)
+                        {
+                            Console.WriteLine($"Skipped Count: {skippedCount}");
+                            Console.WriteLine();
+                            skippedCount = 0;
+                        }
+
+                        Console.WriteLine($"Input: {di + 1} / {inputs.Length}, {(di + 1) / (inputs.Length / 100.0F):F2}%");
+                        Console.WriteLine($"=> {input}");
+                        Console.WriteLine($"Url: {ui + 1} / {urls.Count}, {(ui + 1) / (urls.Count / 100.0F):F2}%");
+                        Console.WriteLine($"=> {url}");
+                    }
+                    else
+                    {
+                        skippedCount++;
+                    }
+
+                    if (skip)
+                    {
+                        if (Config.LogSkipped)
+                        {
+                            Console.WriteLine("Skipped");
+                            Console.WriteLine();
+                        }
+
+                        continue;
+                    }
 
                     Download(progressed, outputDirectory, url);
-
                     Console.WriteLine();
                 }
 
+            }
+
+            if (skippedCount > 0)
+            {
+                Console.WriteLine($"Skipped Count: {skippedCount}");
+                skippedCount = 0;
             }
 
         }
 
         private static void Download(ProgressTracker progressed, string outputDirectory, string url)
         {
-            if (progressed.Contains(url) == true)
-            {
-                Console.WriteLine("Skipped");
-                return;
-            }
-
             Downloaders.ForEach(d => d.Reset());
             var downloader = Downloaders.FirstOrDefault(d => d.Test(url));
 

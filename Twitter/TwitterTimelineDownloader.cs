@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Web;
 using Newtonsoft.Json;
@@ -16,7 +17,7 @@ namespace SNSDownloader.Twitter
     public class TwitterTimelineDownloader : AbstractDownloader
     {
         public const string Prefix = "TwitterTimeline:";
-        public const string SearthTimelineUrl = "https://twitter.com/i/api/graphql/-KWrbTBsPifMuLUqqDiU_A/SearchTimeline";
+        public static Regex SearchTimelinePattern { get; } = new Regex("https:\\/\\/twitter\\.com\\/i\\/api\\/graphql\\/.+\\/SearchTimeline");
 
         private NetworkRequestSentEventArgs FirstRequest;
         private string RawQuery;
@@ -105,7 +106,7 @@ namespace SNSDownloader.Twitter
 
                         if (tweets.Count > 1)
                         {
-                            this.Log($"Range: {tweets[0].CreatedAt.ToStandardString()} ~ {tweets[^1].CreatedAt.ToStandardString()}");
+                            this.Log($"Period: {tweets[0].CreatedAt.ToStandardString()} ~ {tweets[^1].CreatedAt.ToStandardString()}");
                         }
 
                         this.Log($"Count: {totalCount}(+{tweets.Count})");
@@ -195,7 +196,7 @@ namespace SNSDownloader.Twitter
             {
                 return;
             }
-            else if (e.RequestUrl.StartsWith(SearthTimelineUrl) && QueryValues.TryParse(new Uri(e.RequestUrl).Query, out var queries))
+            else if (SearchTimelinePattern.IsMatch(e.RequestUrl) && QueryValues.TryParse(new Uri(e.RequestUrl).Query, out var queries))
             {
                 var payload = new SearchTimelinePayload(queries);
                 var rawQuery = payload.Variables.Value<string>("rawQuery");
