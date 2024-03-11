@@ -157,7 +157,7 @@ namespace SNSDownloader.Twitter
 
                 if (response.Success == true)
                 {
-                    Program.Download(directory, mediaFilePrefix, response.Response);
+                    Program.DownloadBlob(directory, mediaFilePrefix, response.Response);
                 }
 
             }
@@ -175,7 +175,7 @@ namespace SNSDownloader.Twitter
 
                     if (response.Success == true)
                     {
-                        Program.Download(directory, mediaFilePrefix, response.Response);
+                        Program.DownloadBlob(directory, mediaFilePrefix, response.Response);
                     }
 
                 }

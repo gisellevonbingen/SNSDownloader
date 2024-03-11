@@ -100,7 +100,7 @@ namespace SNSDownloader.Tiktok
                 wrier.WriteLine();
                 wrier.WriteLine(this.Item["desc"].Value<string>());
 
-                Program.Download(Path.Combine(directory, $"{fileprefix}.mp4"), this.Video.Response);
+                Program.DownloadBlob(Path.Combine(directory, $"{fileprefix}.mp4"), this.Video.Response);
                 return true;
             }
 

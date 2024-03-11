@@ -194,7 +194,7 @@ namespace SNSDownloader
 
                     if (ready == true)
                     {
-                        Crawl(downloader);
+                        NavigateToDownload(downloader);
 
                         if (downloader.Download(output))
                         {
@@ -218,7 +218,7 @@ namespace SNSDownloader
 
         }
 
-        private static void Crawl(AbstractDownloader downloader)
+        private static void NavigateToDownload(AbstractDownloader downloader)
         {
             if ((downloader == TwitterTweetDownloader || downloader == TwitterTimelineDownloader) && !TwitterLogined)
             {
@@ -314,26 +314,26 @@ namespace SNSDownloader
 
         }
 
-        public static void Download(string path, HttpWebResponse response)
+        public static void DownloadBlob(string path, HttpWebResponse response)
         {
             using var mediaStream = new FileStream(path, FileMode.Create);
-            Download(mediaStream, response);
+            DownloadBlob(mediaStream, response);
         }
 
-        public static void Download(Stream output, HttpWebResponse response)
+        public static void DownloadBlob(Stream output, HttpWebResponse response)
         {
             using var responseStream = response.ReadAsStream();
             responseStream.CopyTo(output, DownloadBufferSize);
         }
 
-        public static void Download(string directory, string fileNamePrefix, HttpWebResponse response) => Download(Path.Combine(directory, $"{fileNamePrefix}_{Path.GetFileName(response.ResponseUri.LocalPath)}"), response);
+        public static void DownloadBlob(string directory, string fileNamePrefix, HttpWebResponse response) => DownloadBlob(Path.Combine(directory, $"{fileNamePrefix}_{Path.GetFileName(response.ResponseUri.LocalPath)}"), response);
 
         public static void DownloadMedia(string path, MediaDownloadData downloadData)
         {
             if (downloadData.Type == MediaDownloadData.DownloadType.Blob)
             {
                 using var response = CreateRequest(downloadData.Url).GetWrappedResponse();
-                Download(path, response.Response);
+                DownloadBlob(path, response.Response);
             }
             else if (downloadData.Type == MediaDownloadData.DownloadType.M3U)
             {
