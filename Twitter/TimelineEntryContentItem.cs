@@ -16,36 +16,39 @@ namespace SNSDownloader.Twitter
 
         public TimelineEntryContentItem(JToken content)
         {
+            this.Result = GetTimelineItem(content);
+        }
+
+        public static TweetResult GetTimelineItem(JToken content)
+        {
             var itemContent = content.Value<JObject>("itemContent");
             var itemType = itemContent.Value<string>("itemType");
-
-            if (string.Equals(itemType, "TimelineTweet"))
+            return itemType switch
             {
-                this.Result = GetTimelineTweet(itemContent);
-            }
-            else if (string.Equals(itemType, "TimelineTimelineCursor"))
-            {
-
-            }
-            else
-            {
-                throw new Exception($"Unknown itemType: {itemType}");
-            }
-
+                "TimelineTweet" => GetTimelineTweet(itemContent),
+                "TimelineTombstone" => new TweetResultTombstone(itemContent),
+                "TimelineTimelineCursor" => null,
+                _ => throw new Exception($"Unknown itemType: {itemType}"),
+            };
         }
 
         public static TweetResult GetTimelineTweet(JToken itemContent)
         {
             var result = itemContent.SelectToken("tweet_results.result");
+
+            if (result == null)
+            {
+                return null;
+            }
+
             var typeName = result.Value<string>("__typename");
             return typeName switch
             {
                 "Tweet" => new TweetResultTweet(result),
                 "TweetWithVisibilityResults" => new TweetResultTweet(result["tweet"]),
                 "TweetTombstone" => new TweetResultTombstone(result),
-                _ => throw new ArgumentOutOfRangeException($"Unknown Typename: {typeName}")
+                _ => throw new ArgumentOutOfRangeException($"Unknown Typename: {typeName}"),
             };
-
         }
 
     }
