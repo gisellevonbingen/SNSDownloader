@@ -10,6 +10,7 @@ using System.Threading;
 using Newtonsoft.Json.Linq;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
+using SNSDownloader.Configs;
 using SNSDownloader.Net;
 using SNSDownloader.Tiktok;
 using SNSDownloader.Twitter;
@@ -36,7 +37,7 @@ namespace SNSDownloader
         private static bool FFmpegEntered = false;
 
         public static string ConfigPath { get; } = Path.Combine(Directory.GetCurrentDirectory(), "Config.json");
-        public static Config Config { get; } = new Config();
+        public static Config Config { get; private set; }
 
         public static void Main()
         {
@@ -76,7 +77,7 @@ namespace SNSDownloader
                 try
                 {
                     var json = JObject.Parse(File.ReadAllText(ConfigPath));
-                    Config.Load(json);
+                    Config = new Config(json);
                     SaveConfig();
                     return true;
                 }
@@ -222,15 +223,21 @@ namespace SNSDownloader
         {
             if ((downloader == TwitterTweetDownloader || downloader == TwitterTimelineDownloader) && !TwitterLogined)
             {
-                RecreateDriver(TwitterLoginOptions);
-                Driver.Navigate().GoToUrl("https://twitter.com/i/flow/login/");
+                if (Config.Twitter.Cookies.Count == 0)
+                {
+                    RecreateDriver(TwitterLoginOptions);
+                    Driver.Navigate().GoToUrl("https://twitter.com/i/flow/login/");
 
-                Console.WriteLine("First, login twitter account");
-                Console.Write("Press enter to start after login");
-                Console.ReadLine();
+                    Console.WriteLine("First, login twitter account");
+                    Console.Write("Press enter to start after login");
+                    Console.ReadLine();
+
+                    ReaminCrawlCount = 0;
+                    Config.Twitter.Cookies.AddRange(GetCookies(Driver, "https://twitter.com/"));
+                    SaveConfig();
+                }
 
                 TwitterLogined = true;
-                ReaminCrawlCount = 0;
             }
 
             if (ReaminCrawlCount <= 0)
@@ -261,7 +268,7 @@ namespace SNSDownloader
 
             if (prev != null)
             {
-                var cookieUrls = new string[] { "https://twitter.com/" };
+                var cookieUrls = new string[] { };
 
                 foreach (var url in cookieUrls)
                 {
@@ -280,6 +287,8 @@ namespace SNSDownloader
             {
                 PutCookies(driver, url, cookies);
             }
+
+            PutCookies(driver, "https://twitter.com/", Config.Twitter.Cookies);
 
             return driver;
         }
