@@ -8,6 +8,8 @@ namespace SNSDownloader.Twitter
 {
     public class TweetResultTweet : TweetResult
     {
+        public const string MarshmallowSuffix = " | マシュマロ";
+
         public string Id { get; set; } = string.Empty;
         public UserData User { get; set; } = new UserData();
         public DateTime CreatedAt { get; set; }
@@ -30,6 +32,21 @@ namespace SNSDownloader.Twitter
             this.User = new UserData(user);
             this.CreatedAt = DateTime.ParseExact(core.Value<string>("created_at"), "ddd MMM dd HH:mm:ss K yyyy", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
             this.FullText = core.Value<string>("full_text");
+
+            var jcard = json.Value<JToken>("card");
+
+            if (jcard != null)
+            {
+                var card = new Card(jcard);
+                var title = card.BindingValues["title"].Value<string>("string_value");
+
+                if (title.EndsWith(MarshmallowSuffix))
+                {
+                    title = title[..^MarshmallowSuffix.Length];
+                }
+
+                this.FullText = $"{$"```marshmallow{Environment.NewLine}{title}{Environment.NewLine}```"}{Environment.NewLine}{this.FullText.Replace(card.Url, "")}";
+            }
 
             var urlArray = core.SelectToken("entities.urls");
 
