@@ -203,7 +203,7 @@ namespace SNSDownloader
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine(e);
+                    downloader.Log($"Exception: {url}, {e}");
                 }
                 finally
                 {

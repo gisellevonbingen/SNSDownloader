@@ -9,6 +9,7 @@ namespace SNSDownloader.Twitter
     public class Card
     {
         public Dictionary<string, JToken> BindingValues { get; } = new Dictionary<string, JToken>();
+        public string Name { get; set; } = string.Empty;
         public string Url { get; set; } = string.Empty;
 
         public Card()
@@ -27,6 +28,7 @@ namespace SNSDownloader.Twitter
                 this.BindingValues[key] = value;
             }
 
+            this.Name = legacy.Value<string>("name");
             this.Url = legacy.Value<string>("url");
         }
 
