@@ -175,7 +175,7 @@ namespace SNSDownloader
         private static void Download(ProgressTracker progressed, string outputDirectory, string url)
         {
             Downloaders.ForEach(d => d.Reset());
-            var downloader = Downloaders.FirstOrDefault(d => d.Test(url));
+            var downloader = Downloaders.FirstOrDefault(d => d.Ready(url));
 
             if (downloader == null)
             {
@@ -190,19 +190,14 @@ namespace SNSDownloader
             {
                 try
                 {
-                    var ready = downloader.Ready(url);
-                    downloader.Log($"Ready: {ready}");
+                    downloader.Log($"Ready");
 
-                    if (ready == true)
+                    NavigateToDownload(downloader);
+
+                    if (downloader.Download(output))
                     {
-                        NavigateToDownload(downloader);
-
-                        if (downloader.Download(output))
-                        {
-                            progressed.Add(url);
-                            break;
-                        }
-
+                        progressed.Add(url);
+                        break;
                     }
 
                 }
