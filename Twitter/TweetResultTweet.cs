@@ -140,6 +140,10 @@ namespace SNSDownloader.Twitter
                     {
                         this.Media.Add(new MediaEntityVideo(media));
                     }
+                    else
+                    {
+                        throw new Exception($"Unknown media type: {mediaType}");
+                    }
 
                 }
 
