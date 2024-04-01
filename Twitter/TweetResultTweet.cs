@@ -40,64 +40,7 @@ namespace SNSDownloader.Twitter
 
             if (jcard != null)
             {
-                var card = new Card(jcard);
-
-                if (card.Name.Equals("summary"))
-                {
-                    var domain = card.BindingValues["domain"].Value<string>("string_value");
-                    var title = card.BindingValues["title"].Value<string>("string_value");
-                    var builder = new StringBuilder($"```{domain}{Environment.NewLine}{title}{Environment.NewLine}");
-
-                    if (card.BindingValues.TryGetValue("description", out var description))
-                    {
-                        builder.Append($"{description.Value<string>("string_value")}{Environment.NewLine}");
-                    }
-
-                    this.FullText = builder.Append($"```{Environment.NewLine}{this.FullText}").ToString();
-                }
-                else if (card.Name.Equals("summary_large_image"))
-                {
-                    var domain = card.BindingValues["domain"].Value<string>("string_value");
-                    var title = card.BindingValues["title"].Value<string>("string_value");
-                    this.FullText = $"{$"```{domain}{Environment.NewLine}{title}{Environment.NewLine}```"}{Environment.NewLine}{this.FullText.Replace(card.Url, "")}";
-                }
-                else if (PollTextOnlyPattern.TryMatch(card.Name, out var pollMatch))
-                {
-                    var poll = int.Parse(pollMatch.Groups["poll"].Value);
-                    var list = new List<KeyValuePair<string, int>>();
-
-                    for (var i = 0; i < poll; i++)
-                    {
-                        var label = card.BindingValues[$"choice{i + 1}_label"].Value<string>("string_value");
-                        var count = int.Parse(card.BindingValues[$"choice{i + 1}_count"].Value<string>("string_value"));
-                        list.Add(KeyValuePair.Create(label, count));
-                    }
-
-                    var totalCount = list.Sum(i => new int?(i.Value)) ?? 0;
-                    var builder = new StringBuilder();
-
-                    foreach (var (label, count) in list)
-                    {
-                        builder.AppendLine($"{label}: {count}({count / (totalCount / 100.0F):F2}%)");
-                    }
-
-                    this.FullText = $"{$"```poll{Environment.NewLine}{builder}{Environment.NewLine}Total: {totalCount}{Environment.NewLine}```"}{Environment.NewLine}{this.FullText}";
-                }
-                else if (card.Name.Equals("promo_image_convo"))
-                {
-                    var title = card.BindingValues["title"].Value<string>("string_value");
-                    this.FullText = $"{$"```{title}{Environment.NewLine}```"}{Environment.NewLine}{this.FullText.Replace(card.Url, "")}";
-                    this.Media.Add(new MediaEntityPhoto() { Url = card.BindingValues["promo_image"].SelectToken("image_value.url").Value<string>() });
-                }
-                else if (card.Name.Equals("player"))
-                {
-
-                }
-                else
-                {
-                    throw new Exception($"Unknown card name: {card.Name}");
-                }
-
+                this.ParseCard(new Card(jcard));
             }
 
             var urlArray = core.SelectToken("entities.urls");
@@ -159,6 +102,84 @@ namespace SNSDownloader.Twitter
 
             }
 
+        }
+
+        private void ParseCard(Card card)
+        {
+            var split = card.Name.Split(':');
+
+            if (split.Length > 2)
+            {
+                throw new Exception($"Unknown card name: {card.Name}");
+            }
+
+            var type = split.Length == 2 ? split[1] : split[0];
+            var title = card.BindingValues.TryGetValue("title", out var jTitle) ? jTitle.Value<string>("string_value") : string.Empty;
+
+            if (type.Equals("summary"))
+            {
+                var builder = new StringBuilder($"{title}{Environment.NewLine}");
+
+                if (card.BindingValues.TryGetValue("description", out var description))
+                {
+                    builder.Append($"{description.Value<string>("string_value")}{Environment.NewLine}");
+                }
+
+                this.PatchCardText($"{builder}", card);
+            }
+            else if (type.Equals("summary_large_image"))
+            {
+                this.PatchCardText(title, card);
+            }
+            else if (PollTextOnlyPattern.TryMatch(type, out var pollMatch))
+            {
+                var poll = int.Parse(pollMatch.Groups["poll"].Value);
+                var list = new List<KeyValuePair<string, int>>();
+
+                for (var i = 0; i < poll; i++)
+                {
+                    var label = card.BindingValues[$"choice{i + 1}_label"].Value<string>("string_value");
+                    var count = int.Parse(card.BindingValues[$"choice{i + 1}_count"].Value<string>("string_value"));
+                    list.Add(KeyValuePair.Create(label, count));
+                }
+
+                var totalCount = list.Sum(i => new int?(i.Value)) ?? 0;
+                var builder = new StringBuilder();
+                builder.AppendLine("poll");
+
+                foreach (var (label, count) in list)
+                {
+                    builder.AppendLine($"{label}: {count}({count / (totalCount / 100.0F):F2}%)");
+                }
+
+                builder.Append($"Total: {totalCount}");
+                this.PatchCardText($"{builder}", card);
+            }
+            else if (type.Equals("promo_image_convo"))
+            {
+                this.PatchCardText(title, card);
+                this.Media.Add(new MediaEntityPhoto() { Url = card.BindingValues["promo_image"].SelectToken("image_value.url").Value<string>() });
+            }
+            else if (type.Equals("player"))
+            {
+
+            }
+            else if (type.Equals("live_event"))
+            {
+                var eventTitle = card.BindingValues["event_title"].Value<string>("string_value");
+                this.PatchCardText(eventTitle, card);
+            }
+            else
+            {
+                throw new Exception($"Unknown card name: {card.Name}");
+            }
+
+        }
+
+        private void PatchCardText(string cardText, Card card)
+        {
+            var cardUrl = card.BindingValues.TryGetValue("card_url", out var jCardUrl) ? jCardUrl.Value<string>("string_value") : string.Empty;
+            this.FullText = $"{$"```{cardUrl}{Environment.NewLine}{cardText}{Environment.NewLine}```"}{Environment.NewLine}{this.FullText.Replace(card.Url, "")}";
         }
 
     }
