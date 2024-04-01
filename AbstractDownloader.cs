@@ -12,6 +12,7 @@ namespace SNSDownloader
 
         public bool IsReady { get; private set; }
         protected string Url { get; private set; }
+        protected Exception Exception { get; set; }
 
         public abstract string PlatformName { get; }
 
@@ -21,6 +22,7 @@ namespace SNSDownloader
         {
             this.IsReady = false;
             this.Url = string.Empty;
+            this.Exception = null;
             this.OnReset();
         }
 

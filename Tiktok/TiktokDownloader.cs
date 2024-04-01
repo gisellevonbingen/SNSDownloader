@@ -70,6 +70,10 @@ namespace SNSDownloader.Tiktok
             {
                 return false;
             }
+            else if (this.Exception != null)
+            {
+                throw new Exception(string.Empty, this.Exception);
+            }
             else if (this.Item == null || this.Video == null)
             {
                 this.Log("Not found");
@@ -114,8 +118,17 @@ namespace SNSDownloader.Tiktok
             }
             else if (e.RequestUrl.StartsWith("https://v16-webapp-prime.tiktok.com/video"))
             {
-                var response = Program.CreateRequest(e).GetWrappedResponse();
-                this.SetVideo(response);
+                try
+                {
+                    var response = Program.CreateRequest(e).GetWrappedResponse();
+                    this.SetVideo(response);
+                }
+                catch (Exception ex)
+                {
+                    this.Exception = ex;
+                    this.SetVideo(null);
+                }
+
             }
 
         }
@@ -128,16 +141,25 @@ namespace SNSDownloader.Tiktok
             }
             else if (ArticlePattern.IsMatch(e.ResponseUrl) == true)
             {
-                var document = new HtmlDocument();
-                document.LoadHtml(e.ResponseBody);
-                var json = JObject.Parse(document.DocumentNode.SelectSingleNode("//*[@id=\"__UNIVERSAL_DATA_FOR_REHYDRATION__\"]").InnerText);
-                var item = json["__DEFAULT_SCOPE__"]["webapp.video-detail"]["itemInfo"]["itemStruct"];
-                this.SetItem(item);
+                try
+                {
+                    var document = new HtmlDocument();
+                    document.LoadHtml(e.ResponseBody);
+                    var json = JObject.Parse(document.DocumentNode.SelectSingleNode("//*[@id=\"__UNIVERSAL_DATA_FOR_REHYDRATION__\"]").InnerText);
+                    var item = json["__DEFAULT_SCOPE__"]["webapp.video-detail"]["itemInfo"]["itemStruct"];
+                    this.SetItem(item);
+                }
+                catch (Exception ex)
+                {
+                    this.Exception = ex;
+                    this.SetItem(null);
+                }
+
             }
 
         }
 
-        public void SetItem(JToken itme)
+        private void SetItem(JToken itme)
         {
             lock (this.SyncRoot)
             {

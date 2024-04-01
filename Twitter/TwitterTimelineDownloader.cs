@@ -58,6 +58,10 @@ namespace SNSDownloader.Twitter
             {
                 return false;
             }
+            else if (this.Exception != null)
+            {
+                throw new Exception(string.Empty, this.Exception);
+            }
             else if (this.FirstRequest == null)
             {
                 this.Log("Not found");
@@ -198,12 +202,21 @@ namespace SNSDownloader.Twitter
             }
             else if (SearchTimelinePattern.IsMatch(e.RequestUrl) && QueryValues.TryParse(new Uri(e.RequestUrl).Query, out var queries))
             {
-                var payload = new SearchTimelinePayload(queries);
-                var rawQuery = payload.Variables.Value<string>("rawQuery");
-
-                if (string.Equals(this.RawQuery, rawQuery))
+                try
                 {
-                    this.FirstRequest = e;
+                    var payload = new SearchTimelinePayload(queries);
+                    var rawQuery = payload.Variables.Value<string>("rawQuery");
+
+                    if (string.Equals(this.RawQuery, rawQuery))
+                    {
+                        this.FirstRequest = e;
+                        this.ResetEvent.Set();
+                    }
+
+                }
+                catch (Exception ex)
+                {
+                    this.Exception = ex;
                     this.ResetEvent.Set();
                 }
 

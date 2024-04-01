@@ -83,6 +83,12 @@ namespace SNSDownloader.Twitter
 
                     this.FullText = $"{$"```poll{Environment.NewLine}{builder}{Environment.NewLine}Total: {totalCount}{Environment.NewLine}```"}{Environment.NewLine}{this.FullText}";
                 }
+                else if (card.Name.Equals("promo_image_convo"))
+                {
+                    var title = card.BindingValues["title"].Value<string>("string_value");
+                    this.FullText = $"{$"```{title}{Environment.NewLine}```"}{Environment.NewLine}{this.FullText.Replace(card.Url, "")}";
+                    this.Media.Add(new MediaEntityPhoto() { Url = card.BindingValues["promo_image"].SelectToken("image_value.url").Value<string>() });
+                }
                 else if (card.Name.Equals("player"))
                 {
 
@@ -132,11 +138,15 @@ namespace SNSDownloader.Twitter
                 {
                     var mediaType = media.Value<string>("type");
 
-                    if (string.Equals(mediaType, "photo") == true)
+                    if (string.Equals(mediaType, "photo"))
                     {
-                        this.Media.Add(new MediaEntityPhoto(media) { Large = true });
+                        this.Media.Add(new MediaEntityPhoto(media));
                     }
-                    else if (string.Equals(mediaType, "video") == true)
+                    else if (string.Equals(mediaType, "video"))
+                    {
+                        this.Media.Add(new MediaEntityVideo(media));
+                    }
+                    else if (string.Equals(mediaType, "animated_gif"))
                     {
                         this.Media.Add(new MediaEntityVideo(media));
                     }

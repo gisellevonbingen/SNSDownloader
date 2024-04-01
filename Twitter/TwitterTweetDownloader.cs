@@ -59,6 +59,10 @@ namespace SNSDownloader.Twitter
             {
                 return false;
             }
+            else if (this.Exception != null)
+            {
+                throw new Exception(string.Empty, this.Exception);
+            }
             else if (this.Entires.Count == 0)
             {
                 this.Log("Not found");
@@ -153,7 +157,7 @@ namespace SNSDownloader.Twitter
         {
             if (media is MediaEntityPhoto photo)
             {
-                using var response = Program.CreateRequest(photo.RequestUrl).GetWrappedResponse();
+                using var response = Program.CreateRequest(photo.Url).GetWrappedResponse();
 
                 if (response.Success == true)
                 {
@@ -195,7 +199,12 @@ namespace SNSDownloader.Twitter
         {
             if (variant.ContentType.Equals("video/mp4") == true)
             {
-                yield return new MediaDownloadData() { Type = MediaDownloadData.DownloadType.Blob, Url = variant.Url, Size = this.ParseSize(variant.Url) };
+                if (!this.TryParseSize(variant.Url, out var size))
+                {
+                    size = video.OriginalSize;
+                }
+
+                yield return new MediaDownloadData() { Type = MediaDownloadData.DownloadType.Blob, Url = variant.Url, Size = size };
             }
             else if (variant.ContentType.Equals("application/x-mpegURL") == true)
             {
@@ -208,12 +217,24 @@ namespace SNSDownloader.Twitter
 
         }
 
-        private Size ParseSize(string url)
+        private bool TryParseSize(string url, out Size size)
         {
-            var groups = SizePattern.Match(url).Groups;
-            var width = int.Parse(groups["width"].Value);
-            var height = int.Parse(groups["height"].Value);
-            return new Size(width, height);
+            var match = SizePattern.Match(url);
+
+            if (match.Success)
+            {
+                var groups = match.Groups;
+                var width = int.Parse(groups["width"].Value);
+                var height = int.Parse(groups["height"].Value);
+                size = new Size(width, height);
+                return true;
+            }
+            else
+            {
+                size = default;
+                return false;
+            }
+
         }
 
         private void OnNetowrkResponseReceived(object sender, NetworkResponseReceivedEventArgs e)
@@ -244,12 +265,13 @@ namespace SNSDownloader.Twitter
             }
             catch (Exception ex)
             {
-                this.Log($"{e.ResponseUrl} - {ex}");
+                this.Exception = ex;
+                this.Set(Enumerable.Empty<TimelineEntry>());
             }
 
         }
 
-        public void Set(IEnumerable<TimelineEntry> entries)
+        private void Set(IEnumerable<TimelineEntry> entries)
         {
             lock (this.Entires)
             {

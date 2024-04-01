@@ -7,8 +7,6 @@ namespace SNSDownloader.Twitter
 {
     public class MediaEntityPhoto : MediaEntity
     {
-        public bool Large { get; set; } = false;
-
         public MediaEntityPhoto()
         {
 
@@ -16,10 +14,8 @@ namespace SNSDownloader.Twitter
 
         public MediaEntityPhoto(JToken json) : this()
         {
-            this.Url = json.Value<string>("media_url_https");
+            this.Url = $"{json.Value<string>("media_url_https")}?name=large";
         }
-
-        public string RequestUrl => this.Large ? $"{this.Url}?name=large" : this.Url;
 
     }
 
