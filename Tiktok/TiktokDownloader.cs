@@ -85,22 +85,13 @@ namespace SNSDownloader.Tiktok
 
                 var dateTime = DateTimeOffset.FromUnixTimeSeconds(this.Item["createTime"].Value<int>()).LocalDateTime;
                 var authorId = this.Item["author"]["uniqueId"].Value<string>();
-                var authorNickname = this.Item["author"]["nickname"].Value<string>();
 
                 var fileprefix = $"{dateTime.ToFileNameString()}_{authorId}_{id}";
 
                 var directory = Path.Combine(output.Directory, $"{dateTime.ToYearMonthString()}");
                 Directory.CreateDirectory(directory);
 
-                using var fs = new FileStream(Path.Combine(directory, $"{fileprefix}.txt"), FileMode.Create);
-                using var wrier = new StreamWriter(fs, Program.UTF8WithoutBOM);
-                wrier.WriteLine($"CreatedAt: {dateTime.ToStandardString()}");
-                wrier.WriteLine($"Url: {url}");
-                wrier.WriteLine($"User: {authorNickname}(@{authorId})");
-                wrier.WriteLine($"Id: {id}");
-                wrier.WriteLine();
-                wrier.WriteLine(this.Item["desc"].Value<string>());
-
+                File.WriteAllText(Path.Combine(directory, $"{fileprefix}.json"), $"{this.Item}");
                 Program.DownloadBlob(Path.Combine(directory, $"{fileprefix}.mp4"), this.Video.Response);
                 return true;
             }

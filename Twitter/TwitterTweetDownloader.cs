@@ -21,26 +21,29 @@ namespace SNSDownloader.Twitter
         public static Regex SizePattern { get; } = new Regex("(?<width>\\d+)x(?<height>\\d+)");
 
 
-        private readonly List<TimelineEntry> Entires;
         private readonly AutoResetEvent ResetEvent;
+
+        private JObject Data;
 
         public TwitterTweetDownloader()
         {
-            this.Entires = new List<TimelineEntry>();
             this.ResetEvent = new AutoResetEvent(false);
+
+            this.Data = null;
         }
 
         public override string PlatformName => "TwitterTweet";
 
         public override void OnNetworkCreated(INetwork network)
         {
-            network.NetworkResponseReceived += this.OnNetowrkResponseReceived;
+            network.NetworkResponseReceived += this.OnNetworkResponseReceived;
         }
 
         protected override void OnReset()
         {
-            this.Entires.Clear();
             this.ResetEvent.Reset();
+
+            this.Data = null;
         }
 
         public override bool Test(string url) => this.Test(url, out _);
@@ -63,7 +66,7 @@ namespace SNSDownloader.Twitter
             {
                 throw new Exception(string.Empty, this.Exception);
             }
-            else if (this.Entires.Count == 0)
+            else if (this.Data == null)
             {
                 this.Log("Not found");
                 return false;
@@ -72,7 +75,7 @@ namespace SNSDownloader.Twitter
             {
                 var id = TwitterUtils.GetTweetId(this.Url);
 
-                this.Log($"Found : {this.Entires.Count}");
+                this.Log($"Found");
                 this.DownloadTweet(output, id);
                 return true;
             }
@@ -81,13 +84,69 @@ namespace SNSDownloader.Twitter
 
         private void DownloadTweet(DownloadOutput output, string tweetId)
         {
-            var results = this.Entires.Select(i => i.Content).OfType<TimelineEntryContentItem>().Select(item => item.Result).Where(t => t != null).ToArray();
+            var entires = new List<TimelineEntry>();
+            var instructions = this.Data.SelectToken("data.threaded_conversation_with_injections_v2.instructions");
+
+            if (instructions != null)
+            {
+                entires.AddRange(TwitterUtils.GetTimelineEntries(instructions));
+            }
+            else
+            {
+                throw new NullReferenceException(nameof(instructions));
+            }
+
+            var results = entires.Select(i => i.Content).OfType<TimelineEntryContentItem>().Select(item => item.Result).Where(t => t != null).ToArray();
             var found = results.OfType<TweetResultTweet>().FirstOrDefault(i => i.Id.Equals(tweetId));
             var createdAt = found.CreatedAt.ToLocalTime();
             var directory = Path.Combine(output.Directory, found.User.ScreenName, $"{createdAt.ToYearMonthString()}");
             Directory.CreateDirectory(directory);
 
             var tweetPrefix = $"{createdAt.ToFileNameString()}_{found.User.ScreenName}_{tweetId}";
+
+            var downladIndex = 0;
+            File.WriteAllText(Path.Combine(directory, $"{tweetPrefix}.json"), $"{this.Data}");
+
+            var mediaUrls = new Dictionary<string, string>();
+
+            foreach (var result in results)
+            {
+                if (result is TweetResultTweet tweet)
+                {
+                    this.ProcessCard(tweet);
+                    tweet.FullText = this.ReplaceUrls(tweet, tweet.FullText);
+
+                    foreach (var url in tweet.Urls)
+                    {
+                        if (url.ExpandedUrl.StartsWith("http://twitpic.com", StringComparison.OrdinalIgnoreCase) == true)
+                        {
+                            tweet.Media.Add(new MediaEntityTwitPic() { Url = url.ExpandedUrl });
+                        }
+
+                    }
+
+                    this.Log($"Media found : {tweet.Media.Count}");
+
+                    foreach (var media in tweet.Media)
+                    {
+                        if (mediaUrls.ContainsKey(media.Url) == true)
+                        {
+                            continue;
+                        }
+
+                        var mediaFilePrefix = $"{tweetPrefix}_{++downladIndex}";
+                        var downloadedUrl = this.DownloadMedia(directory, mediaFilePrefix, media);
+                        mediaUrls[media.Url] = downloadedUrl;
+                    }
+
+                }
+
+            }
+
+        }
+
+        private void Downlaod(string directory, string tweetPrefix, TweetResult[] results)
+        {
             var downladIndex = 0;
             using var tweetStream = new FileStream(Path.Combine(directory, $"{tweetPrefix}.txt"), FileMode.Create);
             using var tweetWriter = new StreamWriter(tweetStream, Program.UTF8WithoutBOM);
@@ -106,7 +165,8 @@ namespace SNSDownloader.Twitter
 
                 if (result is TweetResultTweet tweet)
                 {
-                    this.ProcessCard(output, tweet);
+                    this.ProcessCard(tweet);
+                    tweet.FullText = this.ReplaceUrls(tweet, tweet.FullText);
 
                     foreach (var url in tweet.Urls)
                     {
@@ -146,7 +206,7 @@ namespace SNSDownloader.Twitter
 
         }
 
-        private void ProcessCard(DownloadOutput output, TweetResultTweet tweet)
+        private void ProcessCard(TweetResultTweet tweet)
         {
             var card = tweet.Card;
 
@@ -246,7 +306,7 @@ namespace SNSDownloader.Twitter
         private string ReplaceUrls(TweetResultTweet tweet, string text)
         {
             text = tweet.Urls.Aggregate(text, (t, url) => t.Replace(url.Url, url.ExpandedUrl));
-            text = tweet.Media.Aggregate(text, (t, m) => t.Replace($" {m.Url}", string.Empty));
+            text = tweet.Media.OfType<MediaEntityTwitter>().Aggregate(text, (t, m) => t.Replace($" {m.Url}", m.MediaUrl));
             return text;
         }
 
@@ -259,8 +319,8 @@ namespace SNSDownloader.Twitter
                 return;
             }
 
-            var cardUrl = card.BindingValues.TryGetValue("card_url", out var jCardUrl) ? jCardUrl.Value<string>("string_value") : string.Empty;
-            tweet.FullText = $"{$"```{card.Name}: {cardUrl}{Environment.NewLine}{text}{Environment.NewLine}```"}{Environment.NewLine}{tweet.FullText.Replace(card.Url, "")}";
+            var fullUrl = card.BindingValues.TryGetValue("card_url", out var jCardUrl) ? jCardUrl.Value<string>("string_value") : string.Empty;
+            tweet.FullText = $"{$"```{card.Name}: {fullUrl}{Environment.NewLine}{text}{Environment.NewLine}```"}{Environment.NewLine}{tweet.FullText}";
         }
 
         private void WriteTweet(TextWriter tweetWriter, TweetResultTweet tweet, Dictionary<string, string> mediaMap)
@@ -278,7 +338,7 @@ namespace SNSDownloader.Twitter
             }
 
             tweetWriter.WriteLine();
-            tweetWriter.WriteLine(HttpUtility.HtmlDecode(this.ReplaceUrls(tweet, tweet.FullText)));
+            tweetWriter.WriteLine(HttpUtility.HtmlDecode(tweet.FullText));
         }
 
         private string DownloadMedia(string directory, string mediaFilePrefix, MediaEntity media)
@@ -309,18 +369,22 @@ namespace SNSDownloader.Twitter
             {
                 var downloadTupleList = video.VideoInfo.Variants.SelectMany(v => this.GetVideoDownloadTuples(video, v)).ToArray();
 
-                foreach (var tuple in downloadTupleList.OrderByDescending(o => o.Size.Width * o.Size.Height))
+                foreach (var type in new MediaDownloadData.DownloadType[] { MediaDownloadData.DownloadType.Blob, MediaDownloadData.DownloadType.M3U })
                 {
-                    var path = Program.GetMediaFilePath(directory, $"{mediaFilePrefix}_{tuple.Size.Width}x{tuple.Size.Height}", new Uri(tuple.Download.Url));
-                    Program.DownloadMedia(path, tuple.Download);
-                    return tuple.Download.Url;
+                    foreach (var tuple in downloadTupleList.Where(d => d.Download.Type == type).OrderByDescending(o => o.Bitrate))
+                    {
+                        var path = Program.GetMediaFilePath(directory, mediaFilePrefix, tuple.Download.Url);
+                        Program.DownloadMedia(path, tuple.Download);
+                        return tuple.Download.Url;
+                    }
+
                 }
 
                 return this.DownloadBlob(directory, mediaFilePrefix, $"{video.MediaUrl}?name=large");
             }
             else if (media is MediaEntityAudioSpace audioSpace)
             {
-                Program.DownloadMedia(Program.GetMediaFilePath(directory, mediaFilePrefix, new Uri(audioSpace.SourceLocation)), new MediaDownloadData()
+                Program.DownloadMedia(Program.GetMediaFilePath(directory, mediaFilePrefix, audioSpace.SourceLocation), new MediaDownloadData()
                 {
                     Type = MediaDownloadData.DownloadType.M3U,
                     Url = audioSpace.SourceLocation,
@@ -346,20 +410,15 @@ namespace SNSDownloader.Twitter
             return url;
         }
 
-        private IEnumerable<(MediaDownloadData Download, Size Size)> GetVideoDownloadTuples(MediaEntityTwitterVideo video, VideoVariant variant)
+        private IEnumerable<(MediaDownloadData Download, int Bitrate)> GetVideoDownloadTuples(MediaEntityTwitterVideo video, VideoVariant variant)
         {
             if (variant.ContentType.Equals("video/mp4") == true)
             {
-                if (!this.TryParseSize(variant.Url, out var size))
-                {
-                    size = video.OriginalSize;
-                }
-
-                yield return (new MediaDownloadData() { Type = MediaDownloadData.DownloadType.Blob, Url = variant.Url }, size);
+                yield return (new MediaDownloadData() { Type = MediaDownloadData.DownloadType.Blob, Url = variant.Url }, variant.Bitrate);
             }
             else if (variant.ContentType.Equals("application/x-mpegURL") == true)
             {
-                yield return (new MediaDownloadData() { Type = MediaDownloadData.DownloadType.M3U, Url = variant.Url }, video.OriginalSize);
+                yield return (new MediaDownloadData() { Type = MediaDownloadData.DownloadType.M3U, Url = variant.Url }, 0);
             }
             else
             {
@@ -388,7 +447,7 @@ namespace SNSDownloader.Twitter
 
         }
 
-        private void OnNetowrkResponseReceived(object sender, NetworkResponseReceivedEventArgs e)
+        private void OnNetworkResponseReceived(object sender, NetworkResponseReceivedEventArgs e)
         {
             if (!this.IsReady)
             {
@@ -401,17 +460,7 @@ namespace SNSDownloader.Twitter
 
             try
             {
-                var body = JObject.Parse(e.ResponseBody);
-                var instructions = body.SelectToken("data.threaded_conversation_with_injections_v2.instructions");
-
-                if (instructions != null)
-                {
-                    this.Entires.AddRange(TwitterUtils.GetTimelineEntries(instructions));
-                }
-                else
-                {
-                    throw new NullReferenceException(nameof(instructions));
-                }
+                this.Data = JObject.Parse(e.ResponseBody);
 
             }
             catch (Exception ex)
