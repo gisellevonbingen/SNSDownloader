@@ -17,7 +17,7 @@ namespace SNSDownloader.Twitter
     public class TwitterTimelineDownloader : AbstractDownloader
     {
         public const string Prefix = "TwitterTimeline:";
-        public static Regex SearchTimelinePattern { get; } = new Regex("https:\\/\\/twitter\\.com\\/i\\/api\\/graphql\\/.+\\/SearchTimeline");
+        public static Regex SearchTimelinePattern { get; } = TwitterUtils.GetGraphqlPattern("SearchTimeline");
 
         private NetworkRequestSentEventArgs FirstRequest;
         private string RawQuery;

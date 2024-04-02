@@ -16,7 +16,7 @@ namespace SNSDownloader.Twitter
 {
     public class TwitterTweetDownloader : AbstractDownloader
     {
-        public static Regex TweetDetailPattern { get; } = new Regex("https:\\/\\/twitter\\.com\\/i\\/api\\/graphql\\/.+\\/TweetDetail");
+        public static Regex TweetDetailPattern { get; } = TwitterUtils.GetGraphqlPattern("TweetDetail");
         public static Regex SrcPattern { get; } = new Regex("src=\"(?<src>[^\"]+)\"");
         public static Regex SizePattern { get; } = new Regex("(?<width>\\d+)x(?<height>\\d+)");
 

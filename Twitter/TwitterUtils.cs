@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
@@ -9,9 +10,10 @@ namespace SNSDownloader.Twitter
     public static class TwitterUtils
     {
         public static string TweetIdGroup { get; } = "tweet_id";
-        public static Regex XStatusPattern { get; } = new Regex($"https:\\/\\/x\\.com\\/(?<user_id>.+)\\/status\\/(?<{TweetIdGroup}>\\d+)(\\?.+)?");
-        public static Regex TweetStatusPattern { get; } = new Regex($"https:\\/\\/twitter\\.com\\/(?<user_id>.+)\\/status\\/(?<{TweetIdGroup}>\\d+)(\\?.+)?");
-        public static IEnumerable<Regex> TweetStatusPatterns { get; } = new[] { XStatusPattern, TweetStatusPattern };
+        public static IEnumerable<string> Domains { get; } = new string[] { "https://x.com/", "https://twitter.com/" };
+        public static IEnumerable<Regex> StatusPatterns { get; } = Domains.Select(Regex.Escape).Select(s => new Regex($"{s}\\/(?<user_id>.+)\\/status\\/(?<{TweetIdGroup}>\\d+)(\\?.+)?"));
+
+        public static Regex GetGraphqlPattern(string api) => new Regex($"https:\\/\\/twitter\\.com\\/i\\/api\\/graphql\\/.+\\/{api}");
 
         public static string GetStatusUrl(TweetResultTweet tweet) => GetStatusUrl(tweet.User.ScreenName, tweet.Id);
 
@@ -19,7 +21,7 @@ namespace SNSDownloader.Twitter
 
         public static string GetTweetId(string url)
         {
-            foreach (var pattern in TweetStatusPatterns)
+            foreach (var pattern in StatusPatterns)
             {
                 var statusMatch = pattern.Match(url);
 
