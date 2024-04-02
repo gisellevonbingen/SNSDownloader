@@ -5,16 +5,16 @@ using System.Text;
 
 namespace SNSDownloader.Twitter
 {
-    public class MediaEntityTwitterPhoto : MediaEntity
+    public class MediaEntityTwitterPhoto : MediaEntityTwitter
     {
         public MediaEntityTwitterPhoto()
         {
 
         }
 
-        public MediaEntityTwitterPhoto(JToken json) : this()
+        public MediaEntityTwitterPhoto(JToken json) : base(json)
         {
-            this.Url = $"{json.Value<string>("media_url_https")}?name=large";
+
         }
 
     }

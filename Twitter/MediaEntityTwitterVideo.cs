@@ -7,7 +7,7 @@ using Newtonsoft.Json.Linq;
 
 namespace SNSDownloader.Twitter
 {
-    public class MediaEntityTwitterVideo : MediaEntity
+    public class MediaEntityTwitterVideo : MediaEntityTwitter
     {
         public Dictionary<string, SizeData> Sizes { get; } = new Dictionary<string, SizeData>();
         public Size OriginalSize { get; set; } = new Size();
@@ -18,10 +18,8 @@ namespace SNSDownloader.Twitter
 
         }
 
-        public MediaEntityTwitterVideo(JToken json) : this()
+        public MediaEntityTwitterVideo(JToken json) : base(json)
         {
-            this.Url = json.Value<string>("media_url_https");
-            
             foreach (var pair in json.Value<JObject>("sizes"))
             {
                 this.Sizes[pair.Key] = new SizeData(pair.Value);
