@@ -73,18 +73,18 @@ namespace SNSDownloader.Twitter
                 var id = TwitterUtils.GetTweetId(this.Url);
 
                 this.Log($"Found : {this.Entires.Count}");
-                this.DownloadTweet(id, output.Directory);
+                this.DownloadTweet(output, id);
                 return true;
             }
 
         }
 
-        private void DownloadTweet(string tweetId, string baseDirectory)
+        private void DownloadTweet(DownloadOutput output, string tweetId)
         {
             var results = this.Entires.Select(i => i.Content).OfType<TimelineEntryContentItem>().Select(item => item.Result).Where(t => t != null).ToArray();
             var found = results.OfType<TweetResultTweet>().FirstOrDefault(i => i.Id.Equals(tweetId));
             var createdAt = found.CreatedAt.ToLocalTime();
-            var directory = Path.Combine(baseDirectory, found.User.ScreenName, $"{createdAt.ToYearMonthString()}");
+            var directory = Path.Combine(output.Directory, found.User.ScreenName, $"{createdAt.ToYearMonthString()}");
             Directory.CreateDirectory(directory);
 
             var tweetPrefix = $"{createdAt.ToFileNameString()}_{found.User.ScreenName}_{tweetId}";
@@ -106,6 +106,17 @@ namespace SNSDownloader.Twitter
 
                 if (result is TweetResultTweet tweet)
                 {
+                    this.ProcessCard(output, tweet);
+
+                    foreach (var url in tweet.Urls)
+                    {
+                        if (url.ExpandedUrl.StartsWith("http://twitpic.com", StringComparison.OrdinalIgnoreCase) == true)
+                        {
+                            tweet.Media.Add(new MediaEntityTwitPic() { Url = url.ExpandedUrl });
+                        }
+
+                    }
+
                     this.Log($"Media found : {tweet.Media.Count}");
                     this.WriteTweet(tweetWriter, tweet);
 
@@ -135,6 +146,117 @@ namespace SNSDownloader.Twitter
 
         }
 
+        private void ProcessCard(DownloadOutput output, TweetResultTweet tweet)
+        {
+            var card = tweet.Card;
+
+            if (card == null)
+            {
+                return;
+            }
+
+            var split = card.Name.Split(':');
+
+            if (split.Length > 2)
+            {
+                throw new Exception($"Unknown card name: {card.Name}");
+            }
+
+            var type = split.Length == 2 ? split[1] : split[0];
+            var title = card.BindingValues.TryGetValue("title", out var jTitle) ? jTitle.Value<string>("string_value") : string.Empty;
+
+            if (type.Equals("summary"))
+            {
+                var builder = new StringBuilder($"{title}{Environment.NewLine}");
+
+                if (card.BindingValues.TryGetValue("description", out var description))
+                {
+                    builder.Append($"{description.Value<string>("string_value")}{Environment.NewLine}");
+                }
+
+                this.PatchCardText(tweet, $"{builder}");
+            }
+            else if (type.Equals("summary_large_image"))
+            {
+                this.PatchCardText(tweet, title);
+            }
+            else if (TweetResultTweet.PollTextOnlyPattern.TryMatch(type, out var pollMatch))
+            {
+                var poll = int.Parse(pollMatch.Groups["poll"].Value);
+                var list = new List<KeyValuePair<string, int>>();
+
+                for (var i = 0; i < poll; i++)
+                {
+                    var label = card.BindingValues[$"choice{i + 1}_label"].Value<string>("string_value");
+                    var count = int.Parse(card.BindingValues[$"choice{i + 1}_count"].Value<string>("string_value"));
+                    list.Add(KeyValuePair.Create(label, count));
+                }
+
+                var totalCount = list.Sum(i => new int?(i.Value)) ?? 0;
+                var builder = new StringBuilder();
+
+                foreach (var (label, count) in list)
+                {
+                    builder.AppendLine($"{label}: {count}({count / (totalCount / 100.0F):F2}%)");
+                }
+
+                builder.Append($"Total: {totalCount}");
+                this.PatchCardText(tweet, $"{builder}");
+            }
+            else if (type.Equals("promo_image_convo"))
+            {
+                this.PatchCardText(tweet, title);
+                tweet.Media.Add(new MediaEntityTwitterPhoto() { Url = card.BindingValues["promo_image"].SelectToken("image_value.url").Value<string>() });
+            }
+            else if (type.Equals("player"))
+            {
+
+            }
+            else if (type.Equals("live_event"))
+            {
+                var eventTitle = card.BindingValues["event_title"].Value<string>("string_value");
+                this.PatchCardText(tweet, eventTitle);
+            }
+            else if (type.Equals("audiospace"))
+            {
+                var cardUrl = card.BindingValues["card_url"].Value<string>("string_value");
+                var spaceUrl = this.ReplaceUrl(tweet, cardUrl);
+                AudioSpaceResult result = null;
+                this.Log($"AudioSpace Request: {spaceUrl}");
+
+                if (!Program.Operate(Program.TwitterSpaceDownloader, spaceUrl, d => d.TryGetResult(out result)) || result == null)
+                {
+                    throw new Exception($"AudioSpace Not Found");
+                }
+                else
+                {
+                    this.Log($"AudioSpace Found");
+                    tweet.Media.Add(new MediaEntityAudioSpace() { Url = spaceUrl, SourceLocation = result.SourceLocation });
+                }
+
+            }
+            else
+            {
+                throw new Exception($"Unknown card name: {card.Name}");
+            }
+
+        }
+
+        private string ReplaceUrl(TweetResultTweet tweet, string text) => tweet.Urls.Aggregate(text, (t, url) => t.Replace(url.Url, url.ExpandedUrl));
+
+        private void PatchCardText(TweetResultTweet tweet, string text)
+        {
+            var card = tweet.Card;
+
+            if (card == null)
+            {
+                return;
+            }
+
+            var cardUrl = card.BindingValues.TryGetValue("card_url", out var jCardUrl) ? jCardUrl.Value<string>("string_value") : string.Empty;
+            tweet.FullText = $"{$"```{card.Name}: {cardUrl}{Environment.NewLine}{text}{Environment.NewLine}```"}{Environment.NewLine}{tweet.FullText.Replace(card.Url, "")}";
+        }
+
         private void WriteTweet(TextWriter tweetWriter, TweetResultTweet tweet)
         {
             tweetWriter.WriteLine($"CreatedAt: {tweet.CreatedAt.ToStandardString()}");
@@ -150,12 +272,12 @@ namespace SNSDownloader.Twitter
             }
 
             tweetWriter.WriteLine();
-            tweetWriter.WriteLine(HttpUtility.HtmlDecode(tweet.FullText));
+            tweetWriter.WriteLine(HttpUtility.HtmlDecode(this.ReplaceUrl(tweet, tweet.FullText)));
         }
 
         private void DownloadMedia(string directory, string mediaFilePrefix, MediaEntity media)
         {
-            if (media is MediaEntityPhoto photo)
+            if (media is MediaEntityTwitterPhoto photo)
             {
                 using var response = Program.CreateRequest(photo.Url).GetWrappedResponse();
 
@@ -185,17 +307,23 @@ namespace SNSDownloader.Twitter
                 }
 
             }
-            else if (media is MediaEntityVideo video)
+            else if (media is MediaEntityTwitterVideo video)
             {
-                var variants = video.VideoInfo.Variants;
-                var downloadList = variants.SelectMany(v => this.GetDownloadDataList(video, v)).ToArray();
+                var downloadList = video.VideoInfo.Variants.SelectMany(v => this.GetDownloadDataList(video, v)).ToArray();
                 Program.DownloadLargest(directory, mediaFilePrefix, downloadList);
-
+            }
+            else if (media is MediaEntityAudioSpace audioSpace)
+            {
+                Program.DownloadMedia(Program.GetSimpleMediaFilePath(directory, mediaFilePrefix, new Uri(audioSpace.SourceLocation)), new MediaDownloadData()
+                {
+                    Type = MediaDownloadData.DownloadType.M3U,
+                    Url = audioSpace.SourceLocation,
+                });
             }
 
         }
 
-        private IEnumerable<MediaDownloadData> GetDownloadDataList(MediaEntityVideo video, VideoVariant variant)
+        private IEnumerable<MediaDownloadData> GetDownloadDataList(MediaEntityTwitterVideo video, VideoVariant variant)
         {
             if (variant.ContentType.Equals("video/mp4") == true)
             {
@@ -255,31 +383,20 @@ namespace SNSDownloader.Twitter
 
                 if (instructions != null)
                 {
-                    this.Set(TwitterUtils.GetTimelineEntries(instructions));
+                    this.Entires.AddRange(TwitterUtils.GetTimelineEntries(instructions));
                 }
                 else
                 {
-                    this.Set(Enumerable.Empty<TimelineEntry>());
+                    throw new NullReferenceException(nameof(instructions));
                 }
 
             }
             catch (Exception ex)
             {
                 this.Exception = ex;
-                this.Set(Enumerable.Empty<TimelineEntry>());
             }
 
-        }
-
-        private void Set(IEnumerable<TimelineEntry> entries)
-        {
-            lock (this.Entires)
-            {
-                this.Entires.Clear();
-                this.Entires.AddRange(entries);
-                this.ResetEvent.Set();
-            }
-
+            this.ResetEvent.Set();
         }
 
         protected override void Dispose(bool disposing)

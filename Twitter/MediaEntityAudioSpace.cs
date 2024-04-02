@@ -5,9 +5,11 @@ using Newtonsoft.Json.Linq;
 
 namespace SNSDownloader.Twitter
 {
-    public class MediaEntityTwitPic : MediaEntity
+    public class MediaEntityAudioSpace : MediaEntity
     {
-        public MediaEntityTwitPic()
+        public string SourceLocation { get; set; } = string.Empty;
+
+        public MediaEntityAudioSpace()
         {
 
         }

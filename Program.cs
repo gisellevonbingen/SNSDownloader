@@ -24,9 +24,10 @@ namespace SNSDownloader
         public static Encoding UTF8WithoutBOM = new UTF8Encoding(false);
 
         private static readonly List<AbstractDownloader> Downloaders = new List<AbstractDownloader>();
-        private static TwitterTweetDownloader TwitterTweetDownloader;
-        private static TwitterTimelineDownloader TwitterTimelineDownloader;
-        private static TiktokDownloader TiktokDownloader;
+        public static TwitterTweetDownloader TwitterTweetDownloader { get; private set; }
+        public static TwitterTimelineDownloader TwitterTimelineDownloader { get; private set; }
+        public static TwitterAudioSpaceDownloader TwitterSpaceDownloader { get; private set; }
+        public static TiktokDownloader TiktokDownloader { get; private set; }
         private static IWebDriver Driver;
 
         private static ChromeOptions TwitterLoginOptions;
@@ -55,6 +56,7 @@ namespace SNSDownloader
             {
                 Downloaders.Add(TwitterTweetDownloader = new TwitterTweetDownloader());
                 Downloaders.Add(TwitterTimelineDownloader = new TwitterTimelineDownloader());
+                Downloaders.Add(TwitterSpaceDownloader = new TwitterAudioSpaceDownloader());
                 Downloaders.Add(TiktokDownloader = new TiktokDownloader());
 
                 Console.CancelKeyPress += (sender, e) => Driver.DisposeQuietly();
@@ -172,6 +174,19 @@ namespace SNSDownloader
 
         }
 
+        public static bool Operate<DOWNLOADER>(DOWNLOADER downloader, string url, Func<DOWNLOADER, bool> func) where DOWNLOADER : AbstractDownloader
+        {
+            downloader.Reset();
+
+            if (!downloader.Ready(url))
+            {
+                return false;
+            }
+
+            NavigateToDownload(downloader);
+            return func(downloader);
+        }
+
         private static void Download(ProgressTracker progressed, string outputDirectory, string url)
         {
             Downloaders.ForEach(d => d.Reset());
@@ -216,7 +231,7 @@ namespace SNSDownloader
 
         private static void NavigateToDownload(AbstractDownloader downloader)
         {
-            if ((downloader == TwitterTweetDownloader || downloader == TwitterTimelineDownloader) && !TwitterLogined)
+            if ((downloader == TwitterTweetDownloader || downloader == TwitterTimelineDownloader || downloader == TwitterSpaceDownloader) && !TwitterLogined)
             {
                 if (Config.Twitter.Cookies.Count == 0)
                 {
@@ -330,7 +345,9 @@ namespace SNSDownloader
             responseStream.CopyTo(output, DownloadBufferSize);
         }
 
-        public static void DownloadBlob(string directory, string fileNamePrefix, HttpWebResponse response) => DownloadBlob(Path.Combine(directory, $"{fileNamePrefix}_{Path.GetFileName(response.ResponseUri.LocalPath)}"), response);
+        public static void DownloadBlob(string directory, string fileNamePrefix, HttpWebResponse response) => DownloadBlob(GetSimpleMediaFilePath(directory, fileNamePrefix, response.ResponseUri), response);
+
+        public static string GetSimpleMediaFilePath(string directory, string fileNamePrefix, Uri uri) => Path.Combine(directory, $"{fileNamePrefix}_{Path.GetFileName(uri.LocalPath)}");
 
         public static void DownloadMedia(string path, MediaDownloadData downloadData)
         {
@@ -380,8 +397,12 @@ namespace SNSDownloader
         public static void Bind(HttpWebRequest request, NetworkRequestSentEventArgs e)
         {
             request.Method = e.RequestMethod;
+            PutHeaders(request, e.RequestHeaders);
+        }
 
-            foreach (var pair in e.RequestHeaders)
+        public static void PutHeaders(HttpWebRequest request, IEnumerable<KeyValuePair<string, string>> headers)
+        {
+            foreach (var pair in headers)
             {
                 request.Headers[pair.Key] = pair.Value;
             }

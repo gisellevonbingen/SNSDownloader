@@ -17,8 +17,6 @@ namespace SNSDownloader.Tiktok
     {
         public static Regex ArticlePattern { get; } = new Regex("https:\\/\\/www\\.tiktok\\.com/(?<user_id>.+)/video/(?<article_id>.+)");
 
-        public object SyncRoot { get; } = new object();
-
         private readonly AutoResetEvent ItemResetEvent;
         private readonly AutoResetEvent VideoResetEvent;
 
@@ -63,7 +61,6 @@ namespace SNSDownloader.Tiktok
 
         protected override bool OnReady(string url) => true;
 
-
         public override bool Download(DownloadOutput output)
         {
             if (!this.WaitAll(this.ItemResetEvent, this.VideoResetEvent))
@@ -86,7 +83,7 @@ namespace SNSDownloader.Tiktok
                 var url = this.Url;
                 var id = this.GetArticleId(url);
 
-                var dateTime = DateTimeOffset.UnixEpoch.Add(TimeSpan.FromSeconds(this.Item["createTime"].Value<int>())).LocalDateTime;
+                var dateTime = DateTimeOffset.FromUnixTimeSeconds(this.Item["createTime"].Value<int>()).LocalDateTime;
                 var authorId = this.Item["author"]["uniqueId"].Value<string>();
                 var authorNickname = this.Item["author"]["nickname"].Value<string>();
 
@@ -120,15 +117,14 @@ namespace SNSDownloader.Tiktok
             {
                 try
                 {
-                    var response = Program.CreateRequest(e).GetWrappedResponse();
-                    this.SetVideo(response);
+                    this.Video = Program.CreateRequest(e).GetWrappedResponse();
                 }
                 catch (Exception ex)
                 {
                     this.Exception = ex;
-                    this.SetVideo(null);
                 }
 
+                this.VideoResetEvent.Set();
             }
 
         }
@@ -146,35 +142,14 @@ namespace SNSDownloader.Tiktok
                     var document = new HtmlDocument();
                     document.LoadHtml(e.ResponseBody);
                     var json = JObject.Parse(document.DocumentNode.SelectSingleNode("//*[@id=\"__UNIVERSAL_DATA_FOR_REHYDRATION__\"]").InnerText);
-                    var item = json["__DEFAULT_SCOPE__"]["webapp.video-detail"]["itemInfo"]["itemStruct"];
-                    this.SetItem(item);
+                    this.Item = json["__DEFAULT_SCOPE__"]["webapp.video-detail"]["itemInfo"]["itemStruct"];
                 }
                 catch (Exception ex)
                 {
                     this.Exception = ex;
-                    this.SetItem(null);
                 }
 
-            }
-
-        }
-
-        private void SetItem(JToken itme)
-        {
-            lock (this.SyncRoot)
-            {
-                this.Item = itme;
                 this.ItemResetEvent.Set();
-            }
-
-        }
-
-        public void SetVideo(WrappedHttpResponse video)
-        {
-            lock (this.SyncRoot)
-            {
-                this.Video = video;
-                this.VideoResetEvent.Set();
             }
 
         }

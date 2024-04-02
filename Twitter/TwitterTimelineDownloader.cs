@@ -92,7 +92,7 @@ namespace SNSDownloader.Twitter
                     try
                     {
                         using var response = request.GetWrappedResponse();
-                        rAsString = response.Response.ReadAsString(Encoding.UTF8);
+                        rAsString = response.Response.ReadAsString(Program.UTF8WithoutBOM);
                         var body = JObject.Parse(rAsString);
 
                         var (tweets, cursor) = this.GetTweetsAndNextCursor(body);

@@ -14,11 +14,6 @@ namespace SNSDownloader.Twitter
 
         }
 
-        public MediaEntity(JToken json) : this()
-        {
-
-        }
-
     }
 
 }
