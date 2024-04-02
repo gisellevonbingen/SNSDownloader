@@ -7,6 +7,7 @@ using System.Threading;
 using Newtonsoft.Json.Linq;
 using OpenQA.Selenium;
 using SNSDownloader.Net;
+using SNSDownloader.Util;
 
 namespace SNSDownloader.Twitter
 {
@@ -167,6 +168,13 @@ namespace SNSDownloader.Twitter
 
             var text = response.Response.ReadAsString(Program.UTF8WithoutBOM);
             return JObject.Parse(text);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+
+            this.ResultResetEvent.DisposeQuietly();
         }
 
     }
