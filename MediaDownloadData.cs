@@ -9,7 +9,11 @@ namespace SNSDownloader
     {
         public DownloadType Type { get; set; }
         public string Url { get; set; }
-        public Size Size { get; set; }
+
+        public MediaDownloadData()
+        {
+
+        }
 
         public enum DownloadType
         {

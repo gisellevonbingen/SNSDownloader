@@ -220,18 +220,19 @@ namespace SNSDownloader.Twitter
             else if (type.Equals("audiospace"))
             {
                 var cardUrl = card.BindingValues["card_url"].Value<string>("string_value");
-                var spaceUrl = this.ReplaceUrl(tweet, cardUrl);
+                var audioSpaceUrl = this.ReplaceUrl(tweet, cardUrl);
                 AudioSpaceResult result = null;
-                this.Log($"AudioSpace Request: {spaceUrl}");
+                this.Log($"AudioSpace Request: {audioSpaceUrl}");
 
-                if (!Program.Operate(Program.TwitterSpaceDownloader, spaceUrl, d => d.TryGetResult(out result)) || result == null)
+                if (!Program.Operate(Program.TwitterSpaceDownloader, audioSpaceUrl, d => d.TryGetResult(out result)) || result == null)
                 {
                     throw new Exception($"AudioSpace Not Found");
                 }
                 else
                 {
                     this.Log($"AudioSpace Found");
-                    tweet.Media.Add(new MediaEntityAudioSpace() { Url = spaceUrl, SourceLocation = result.SourceLocation });
+                    this.PatchCardText(tweet, result.AudioSpace.Title);
+                    tweet.Media.Add(new MediaEntityAudioSpace() { Url = audioSpaceUrl, SourceLocation = result.SourceLocation });
                 }
 
             }
@@ -309,12 +310,19 @@ namespace SNSDownloader.Twitter
             }
             else if (media is MediaEntityTwitterVideo video)
             {
-                var downloadList = video.VideoInfo.Variants.SelectMany(v => this.GetDownloadDataList(video, v)).ToArray();
-                Program.DownloadLargest(directory, mediaFilePrefix, downloadList);
+                var downloadTupleList = video.VideoInfo.Variants.SelectMany(v => this.GetVideoDownloadTuples(video, v)).ToArray();
+
+                foreach (var tuple in downloadTupleList.OrderByDescending(o => o.Size.Width * o.Size.Height))
+                {
+                    var path = Program.GetMediaFilePath(directory, $"{mediaFilePrefix}_{tuple.Size.Width}x{tuple.Size.Height}", new Uri(tuple.Download.Url));
+                    Program.DownloadMedia(path, tuple.Download);
+                    break;
+                }
+
             }
             else if (media is MediaEntityAudioSpace audioSpace)
             {
-                Program.DownloadMedia(Program.GetSimpleMediaFilePath(directory, mediaFilePrefix, new Uri(audioSpace.SourceLocation)), new MediaDownloadData()
+                Program.DownloadMedia(Program.GetMediaFilePath(directory, mediaFilePrefix, new Uri(audioSpace.SourceLocation)), new MediaDownloadData()
                 {
                     Type = MediaDownloadData.DownloadType.M3U,
                     Url = audioSpace.SourceLocation,
@@ -323,7 +331,7 @@ namespace SNSDownloader.Twitter
 
         }
 
-        private IEnumerable<MediaDownloadData> GetDownloadDataList(MediaEntityTwitterVideo video, VideoVariant variant)
+        private IEnumerable<(MediaDownloadData Download, Size Size)> GetVideoDownloadTuples(MediaEntityTwitterVideo video, VideoVariant variant)
         {
             if (variant.ContentType.Equals("video/mp4") == true)
             {
@@ -332,11 +340,11 @@ namespace SNSDownloader.Twitter
                     size = video.OriginalSize;
                 }
 
-                yield return new MediaDownloadData() { Type = MediaDownloadData.DownloadType.Blob, Url = variant.Url, Size = size };
+                yield return (new MediaDownloadData() { Type = MediaDownloadData.DownloadType.Blob, Url = variant.Url }, size);
             }
             else if (variant.ContentType.Equals("application/x-mpegURL") == true)
             {
-                yield return new MediaDownloadData() { Type = MediaDownloadData.DownloadType.M3U, Url = variant.Url, Size = video.OriginalSize };
+                yield return (new MediaDownloadData() { Type = MediaDownloadData.DownloadType.M3U, Url = variant.Url }, video.OriginalSize);
             }
             else
             {

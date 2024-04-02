@@ -303,18 +303,6 @@ namespace SNSDownloader
             return driver;
         }
 
-        public static void DownloadLargest(string directory, string fileNamePrefix, IEnumerable<MediaDownloadData> downloads)
-        {
-            foreach (var download in downloads.OrderByDescending(o => o.Size.Width * o.Size.Height))
-            {
-                var path = Path.Combine(directory, $"{fileNamePrefix}_{download.Size.Width}x{download.Size.Height}_{Path.GetFileName(new Uri(download.Url).LocalPath)}");
-                DownloadMedia(path, download);
-
-                break;
-            }
-
-        }
-
         private static OpenQA.Selenium.Cookie[] GetCookies(IWebDriver driver, string url)
         {
             driver.Navigate().GoToUrl(url);
@@ -345,9 +333,11 @@ namespace SNSDownloader
             responseStream.CopyTo(output, DownloadBufferSize);
         }
 
-        public static void DownloadBlob(string directory, string fileNamePrefix, HttpWebResponse response) => DownloadBlob(GetSimpleMediaFilePath(directory, fileNamePrefix, response.ResponseUri), response);
+        public static void DownloadBlob(string directory, string fileNamePrefix, HttpWebResponse response) => DownloadBlob(GetMediaFilePath(directory, fileNamePrefix, response.ResponseUri), response);
 
-        public static string GetSimpleMediaFilePath(string directory, string fileNamePrefix, Uri uri) => Path.Combine(directory, $"{fileNamePrefix}_{Path.GetFileName(uri.LocalPath)}");
+        public static string GetMediaFilePath(string directory, string prefix, string url) => GetMediaFilePath(directory, prefix, new Uri(url));
+
+        public static string GetMediaFilePath(string directory, string prefix, Uri uri) => Path.Combine(directory, $"{prefix}_{Path.GetFileName(uri.LocalPath)}");
 
         public static void DownloadMedia(string path, MediaDownloadData downloadData)
         {
@@ -376,7 +366,7 @@ namespace SNSDownloader
                 }
 
                 path = Path.ChangeExtension(path, ".mp4");
-                using var process = Process.Start(new ProcessStartInfo(Config.FFmpegPath, $"-i \"{downloadData.Url}\" -c copy \"{path}\""));
+                using var process = Process.Start(new ProcessStartInfo(Config.FFmpegPath, $"-i \"{downloadData.Url}\" -c copy -y \"{path}\""));
                 process.WaitForExit();
             }
 
