@@ -85,6 +85,13 @@ namespace SNSDownloader.Twitter
         private void DownloadTweet(DownloadOutput output, string tweetId)
         {
             var entires = new List<TimelineEntry>();
+            var errors = this.Data.Value<JToken>("errors");
+
+            if (errors != null)
+            {
+                throw new Exception($"{errors}");
+            }
+
             var instructions = this.Data.SelectToken("data.threaded_conversation_with_injections_v2.instructions");
 
             if (instructions != null)
