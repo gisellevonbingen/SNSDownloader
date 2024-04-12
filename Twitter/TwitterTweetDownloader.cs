@@ -121,7 +121,6 @@ namespace SNSDownloader.Twitter
                 if (result is TweetResultTweet tweet)
                 {
                     this.ProcessCard(tweet);
-                    tweet.FullText = this.ReplaceUrls(tweet, tweet.FullText);
 
                     foreach (var url in tweet.Urls)
                     {
@@ -146,67 +145,6 @@ namespace SNSDownloader.Twitter
                         mediaUrls[media.Url] = downloadedUrl;
                     }
 
-                }
-
-            }
-
-        }
-
-        private void Downlaod(string directory, string tweetPrefix, TweetResult[] results)
-        {
-            var downladIndex = 0;
-            using var tweetStream = new FileStream(Path.Combine(directory, $"{tweetPrefix}.txt"), FileMode.Create);
-            using var tweetWriter = new StreamWriter(tweetStream, Program.UTF8WithoutBOM);
-            var mediaUrls = new Dictionary<string, string>();
-
-            for (var ti = 0; ti < results.Length; ti++)
-            {
-                var result = results[ti];
-
-                if (ti > 0)
-                {
-                    tweetWriter.WriteLine();
-                    tweetWriter.WriteLine(new string('=', 40));
-                    tweetWriter.WriteLine();
-                }
-
-                if (result is TweetResultTweet tweet)
-                {
-                    this.ProcessCard(tweet);
-                    tweet.FullText = this.ReplaceUrls(tweet, tweet.FullText);
-
-                    foreach (var url in tweet.Urls)
-                    {
-                        if (url.ExpandedUrl.StartsWith("http://twitpic.com", StringComparison.OrdinalIgnoreCase) == true)
-                        {
-                            tweet.Media.Add(new MediaEntityTwitPic() { Url = url.ExpandedUrl });
-                        }
-
-                    }
-
-                    this.Log($"Media found : {tweet.Media.Count}");
-
-                    foreach (var media in tweet.Media)
-                    {
-                        if (mediaUrls.ContainsKey(media.Url) == true)
-                        {
-                            continue;
-                        }
-
-                        var mediaFilePrefix = $"{tweetPrefix}_{++downladIndex}";
-                        var downloadedUrl = this.DownloadMedia(directory, mediaFilePrefix, media);
-                        mediaUrls[media.Url] = downloadedUrl;
-                    }
-
-                    this.WriteTweet(tweetWriter, tweet, mediaUrls);
-                }
-                else if (result is TweetResultTombstone tombstone)
-                {
-                    tweetWriter.WriteLine("$Tombstone$");
-                }
-                else
-                {
-                    throw new Exception($"Unknown {nameof(TweetResult)}: {result}");
                 }
 
             }
@@ -234,45 +172,18 @@ namespace SNSDownloader.Twitter
 
             if (type.Equals("summary"))
             {
-                var builder = new StringBuilder($"{title}{Environment.NewLine}");
 
-                if (card.BindingValues.TryGetValue("description", out var description))
-                {
-                    builder.Append($"{description.Value<string>("string_value")}{Environment.NewLine}");
-                }
-
-                this.PatchCardText(tweet, $"{builder}");
             }
             else if (type.Equals("summary_large_image"))
             {
-                this.PatchCardText(tweet, title);
+
             }
             else if (TweetResultTweet.PollTextOnlyPattern.TryMatch(type, out var pollMatch))
             {
-                var poll = int.Parse(pollMatch.Groups["poll"].Value);
-                var list = new List<KeyValuePair<string, int>>();
 
-                for (var i = 0; i < poll; i++)
-                {
-                    var label = card.BindingValues[$"choice{i + 1}_label"].Value<string>("string_value");
-                    var count = int.Parse(card.BindingValues[$"choice{i + 1}_count"].Value<string>("string_value"));
-                    list.Add(KeyValuePair.Create(label, count));
-                }
-
-                var totalCount = list.Sum(i => new int?(i.Value)) ?? 0;
-                var builder = new StringBuilder();
-
-                foreach (var (label, count) in list)
-                {
-                    builder.AppendLine($"{label}: {count}({count / (totalCount / 100.0F):F2}%)");
-                }
-
-                builder.Append($"Total: {totalCount}");
-                this.PatchCardText(tweet, $"{builder}");
             }
             else if (type.Equals("promo_image_convo"))
             {
-                this.PatchCardText(tweet, title);
                 tweet.Media.Add(new MediaEntityBlob() { Url = card.BindingValues["promo_image"].SelectToken("image_value.url").Value<string>() });
             }
             else if (type.Equals("player"))
@@ -281,8 +192,7 @@ namespace SNSDownloader.Twitter
             }
             else if (type.Equals("live_event"))
             {
-                var eventTitle = card.BindingValues["event_title"].Value<string>("string_value");
-                this.PatchCardText(tweet, eventTitle);
+
             }
             else if (type.Equals("audiospace"))
             {
@@ -298,7 +208,6 @@ namespace SNSDownloader.Twitter
                 else
                 {
                     this.Log($"AudioSpace Found");
-                    this.PatchCardText(tweet, result.AudioSpace.Title);
                     tweet.Media.Add(new MediaEntityAudioSpace() { Url = audioSpaceUrl, SourceLocation = result.SourceLocation });
                 }
 
@@ -315,37 +224,6 @@ namespace SNSDownloader.Twitter
             text = tweet.Urls.Aggregate(text, (t, url) => t.Replace(url.Url, url.ExpandedUrl));
             text = tweet.Media.OfType<MediaEntityTwitter>().Aggregate(text, (t, m) => t.Replace($" {m.Url}", m.MediaUrl));
             return text;
-        }
-
-        private void PatchCardText(TweetResultTweet tweet, string text)
-        {
-            var card = tweet.Card;
-
-            if (card == null)
-            {
-                return;
-            }
-
-            var fullUrl = card.BindingValues.TryGetValue("card_url", out var jCardUrl) ? jCardUrl.Value<string>("string_value") : string.Empty;
-            tweet.FullText = $"{$"```{card.Name}: {fullUrl}{Environment.NewLine}{text}{Environment.NewLine}```"}{Environment.NewLine}{tweet.FullText}";
-        }
-
-        private void WriteTweet(TextWriter tweetWriter, TweetResultTweet tweet, Dictionary<string, string> mediaMap)
-        {
-            tweetWriter.WriteLine($"CreatedAt: {tweet.CreatedAt.ToStandardString()}");
-            tweetWriter.WriteLine($"Url: {TwitterUtils.GetStatusUrl(tweet)}");
-            tweetWriter.WriteLine($"User: {tweet.User.Name}(@{tweet.User.ScreenName})");
-            tweetWriter.WriteLine($"Id: {tweet.Id}");
-            tweetWriter.WriteLine($"Quoted: {tweet.Quoted}");
-            tweetWriter.WriteLine($"Media: {tweet.Media.Count}");
-
-            for (var mi = 0; mi < tweet.Media.Count; mi++)
-            {
-                tweetWriter.WriteLine($"- {mediaMap[tweet.Media[mi].Url]}");
-            }
-
-            tweetWriter.WriteLine();
-            tweetWriter.WriteLine(HttpUtility.HtmlDecode(tweet.FullText));
         }
 
         private string DownloadMedia(string directory, string mediaFilePrefix, MediaEntity media)
@@ -429,27 +307,7 @@ namespace SNSDownloader.Twitter
             }
             else
             {
-                this.Log($"Unknown ContentType: {variant.ContentType}");
-            }
-
-        }
-
-        private bool TryParseSize(string url, out Size size)
-        {
-            var match = SizePattern.Match(url);
-
-            if (match.Success)
-            {
-                var groups = match.Groups;
-                var width = int.Parse(groups["width"].Value);
-                var height = int.Parse(groups["height"].Value);
-                size = new Size(width, height);
-                return true;
-            }
-            else
-            {
-                size = default;
-                return false;
+                throw new Exception($"Unknown ContentType: {variant.ContentType}");
             }
 
         }
