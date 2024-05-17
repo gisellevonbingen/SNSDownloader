@@ -44,7 +44,7 @@ namespace SNSDownloader.Twitter
 
         public override bool Test(string url) => url.StartsWith(Prefix);
 
-        public override string GetRequestUrl() => "https://twitter.com/search?q=" + HttpUtility.UrlEncode(this.RawQuery) + "&src=typed_query&f=live";
+        public override string GetRequestUrl() => "https://x.com/search?q=" + HttpUtility.UrlEncode(this.RawQuery) + "&src=typed_query&f=live";
 
         protected override bool OnReady(string url)
         {

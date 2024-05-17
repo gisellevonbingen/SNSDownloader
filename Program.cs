@@ -236,14 +236,14 @@ namespace SNSDownloader
                 if (Config.Twitter.Cookies.Count == 0)
                 {
                     RecreateDriver(TwitterLoginOptions);
-                    Driver.Navigate().GoToUrl("https://twitter.com/i/flow/login/");
+                    Driver.Navigate().GoToUrl("https://x.com/i/flow/login/");
 
                     Console.WriteLine("First, login twitter account");
                     Console.Write("Press enter to start after login");
                     Console.ReadLine();
 
                     ReaminCrawlCount = 0;
-                    Config.Twitter.Cookies.AddRange(GetCookies(Driver, "https://twitter.com/"));
+                    Config.Twitter.Cookies.AddRange(GetCookies(Driver, "https://x.com/"));
                     SaveConfig();
                 }
 
@@ -298,7 +298,7 @@ namespace SNSDownloader
                 PutCookies(driver, url, cookies);
             }
 
-            PutCookies(driver, "https://twitter.com/", Config.Twitter.Cookies);
+            PutCookies(driver, "https://x.com/", Config.Twitter.Cookies);
 
             return driver;
         }
