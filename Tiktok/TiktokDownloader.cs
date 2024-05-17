@@ -88,7 +88,7 @@ namespace SNSDownloader.Tiktok
 
                 var fileprefix = $"{dateTime.ToFileNameString()}_{authorId}_{id}";
 
-                var directory = Path.Combine(output.Directory, $"{dateTime.ToYearMonthString()}");
+                var directory = Path.Combine(output.Directory, $"{dateTime:yyyy}", $"{dateTime.ToYearMonthString()}");
                 Directory.CreateDirectory(directory);
 
                 File.WriteAllText(Path.Combine(directory, $"{fileprefix}.json"), $"{this.Item}");

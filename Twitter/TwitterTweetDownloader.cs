@@ -106,7 +106,7 @@ namespace SNSDownloader.Twitter
             var results = entires.Select(i => i.Content).OfType<TimelineEntryContentItem>().Select(item => item.Result).Where(t => t != null).ToArray();
             var found = results.OfType<TweetResultTweet>().FirstOrDefault(i => i.Id.Equals(tweetId));
             var createdAt = found.CreatedAt.ToLocalTime();
-            var directory = Path.Combine(output.Directory, found.User.ScreenName, $"{createdAt.ToYearMonthString()}");
+            var directory = Path.Combine(output.Directory, found.User.ScreenName, $"{createdAt:yyyy}", $"{createdAt.ToYearMonthString()}");
             Directory.CreateDirectory(directory);
 
             var tweetPrefix = $"{createdAt.ToFileNameString()}_{found.User.ScreenName}_{tweetId}";
