@@ -16,7 +16,8 @@ namespace SNSDownloader.Twitter
         public string Id { get; set; } = string.Empty;
         public LegacyUserData User { get; set; } = new LegacyUserData();
         public DateTime CreatedAt { get; set; }
-        public string Quoted { get; set; } = string.Empty;
+        public string QuotedId { get; set; } = string.Empty;
+        public TweetResult QuotedResult { get; set; } = null;
         public string FullText { get; set; } = string.Empty;
         public List<UrlData> Urls { get; } = new List<UrlData>();
         public List<MediaEntity> Media { get; } = new List<MediaEntity>();
@@ -55,7 +56,8 @@ namespace SNSDownloader.Twitter
 
             if (quoted != null)
             {
-                this.Quoted = quoted.Value<string>("expanded");
+                this.QuotedId = quoted.Value<string>("expanded");
+                this.QuotedResult = TimelineEntryContentItem.GetTimelineTweet(core.SelectToken("quoted_status_result.result"));
             }
 
             var mediaArray = core.SelectToken("extended_entities.media");
@@ -64,27 +66,32 @@ namespace SNSDownloader.Twitter
             {
                 foreach (var media in mediaArray)
                 {
-                    var mediaType = media.Value<string>("type");
-
-                    if (string.Equals(mediaType, "photo"))
-                    {
-                        this.Media.Add(new MediaEntityTwitterPhoto(media));
-                    }
-                    else if (string.Equals(mediaType, "video"))
-                    {
-                        this.Media.Add(new MediaEntityTwitterVideo(media));
-                    }
-                    else if (string.Equals(mediaType, "animated_gif"))
-                    {
-                        this.Media.Add(new MediaEntityTwitterVideo(media));
-                    }
-                    else
-                    {
-                        throw new Exception($"Unknown media type: {mediaType}");
-                    }
-
+                    this.Media.Add(ParseMedia(media));
                 }
 
+            }
+
+        }
+
+        public static MediaEntityTwitter ParseMedia(JToken media)
+        {
+            var mediaType = media.Value<string>("type");
+
+            if (string.Equals(mediaType, "photo"))
+            {
+                return new MediaEntityTwitterPhoto(media);
+            }
+            else if (string.Equals(mediaType, "video"))
+            {
+                return new MediaEntityTwitterVideo(media);
+            }
+            else if (string.Equals(mediaType, "animated_gif"))
+            {
+                return new MediaEntityTwitterVideo(media);
+            }
+            else
+            {
+                throw new Exception($"Unknown media type: {mediaType}");
             }
 
         }

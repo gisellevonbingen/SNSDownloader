@@ -212,6 +212,25 @@ namespace SNSDownloader.Twitter
                 }
 
             }
+            else if (type.Equals("unified_card"))
+            {
+                var t = card.BindingValues["unified_card"];
+                var type2 = t.Value<string>("type");
+
+                if (type2.Equals("STRING", StringComparison.OrdinalIgnoreCase))
+                {
+                    var t2 = t.Value<string>("string_value");
+                    var wrapped = JObject.Parse(t2);
+                    var entities = wrapped.Value<JObject>("media_entities");
+
+                    foreach (var pair in entities)
+                    {
+                        tweet.Media.Add(TweetResultTweet.ParseMedia(pair.Value));
+                    }
+
+                }
+
+            }
             else
             {
                 throw new Exception($"Unknown card name: {card.Name}");
