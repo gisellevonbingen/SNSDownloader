@@ -14,21 +14,21 @@ using SNSDownloader.Util;
 
 namespace SNSDownloader.Twitter
 {
-    public class TwitterTimelineDownloader : AbstractDownloader
+    public class TwitterTimelineSearchDownloader : AbstractDownloader
     {
-        public const string Prefix = "TwitterTimeline:";
+        public const string Prefix = "TwitterTimelineSearch:";
         public static Regex SearchTimelinePattern { get; } = TwitterUtils.GetGraphqlPattern("SearchTimeline");
 
         private NetworkRequestSentEventArgs FirstRequest;
         private string RawQuery;
         private readonly AutoResetEvent ResetEvent;
 
-        public TwitterTimelineDownloader()
+        public TwitterTimelineSearchDownloader()
         {
             this.ResetEvent = new AutoResetEvent(false);
         }
 
-        public override string PlatformName => "TwitterTimeline";
+        public override string PlatformName => "TwitterTimelineSearch";
 
         public override void OnNetworkCreated(INetwork network)
         {

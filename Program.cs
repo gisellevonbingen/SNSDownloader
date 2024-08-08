@@ -25,7 +25,7 @@ namespace SNSDownloader
 
         private static readonly List<AbstractDownloader> Downloaders = new List<AbstractDownloader>();
         public static TwitterTweetDownloader TwitterTweetDownloader { get; private set; }
-        public static TwitterTimelineDownloader TwitterTimelineDownloader { get; private set; }
+        public static TwitterTimelineSearchDownloader TwitterTimelineSearchDownloader { get; private set; }
         public static TwitterAudioSpaceDownloader TwitterSpaceDownloader { get; private set; }
         public static TiktokDownloader TiktokDownloader { get; private set; }
         private static IWebDriver Driver;
@@ -55,7 +55,7 @@ namespace SNSDownloader
             try
             {
                 Downloaders.Add(TwitterTweetDownloader = new TwitterTweetDownloader());
-                Downloaders.Add(TwitterTimelineDownloader = new TwitterTimelineDownloader());
+                Downloaders.Add(TwitterTimelineSearchDownloader = new TwitterTimelineSearchDownloader());
                 Downloaders.Add(TwitterSpaceDownloader = new TwitterAudioSpaceDownloader());
                 Downloaders.Add(TiktokDownloader = new TiktokDownloader());
 
@@ -128,7 +128,7 @@ namespace SNSDownloader
                 for (var ui = 0; ui < urls.Count; ui++)
                 {
                     var url = urls[ui];
-                    var skip = progressed.Contains(url);
+                    var skip = progressed.Contains(ProcessProgressUrl(url));
 
                     if (!skip || Config.LogSkipped)
                     {
@@ -211,7 +211,7 @@ namespace SNSDownloader
 
                     if (downloader.Download(output))
                     {
-                        progressed.Add(url);
+                        progressed.Add(ProcessProgressUrl(url));
                         break;
                     }
 
@@ -229,9 +229,11 @@ namespace SNSDownloader
 
         }
 
+        private static string ProcessProgressUrl(string url) => url.Replace("twitter.com", "x.com");
+
         private static void NavigateToDownload(AbstractDownloader downloader)
         {
-            if ((downloader == TwitterTweetDownloader || downloader == TwitterTimelineDownloader || downloader == TwitterSpaceDownloader) && !TwitterLogined)
+            if ((downloader == TwitterTweetDownloader || downloader == TwitterTimelineSearchDownloader || downloader == TwitterSpaceDownloader) && !TwitterLogined)
             {
                 if (Config.Twitter.Cookies.Count == 0)
                 {

@@ -25,17 +25,15 @@ namespace SNSDownloader.Twitter
             var itemType = itemContent.Value<string>("itemType");
             return itemType switch
             {
-                "TimelineTweet" => GetTimelineTweet(itemContent),
+                "TimelineTweet" => GetTimelineTweet(itemContent.SelectToken("tweet_results.result")),
                 "TimelineTombstone" => new TweetResultTombstone(itemContent),
                 "TimelineTimelineCursor" => null,
                 _ => throw new Exception($"Unknown itemType: {itemType}"),
             };
         }
 
-        public static TweetResult GetTimelineTweet(JToken itemContent)
+        public static TweetResult GetTimelineTweet(JToken result)
         {
-            var result = itemContent.SelectToken("tweet_results.result");
-
             if (result == null)
             {
                 return null;
