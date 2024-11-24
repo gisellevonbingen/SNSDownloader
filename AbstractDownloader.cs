@@ -11,6 +11,7 @@ namespace SNSDownloader
         public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(1.0D);
 
         public bool IsReady { get; private set; }
+        public List<string> Children { get; private set; } = new List<string>();
         protected string Url { get; private set; }
         protected Exception Exception { get; set; }
 
@@ -21,6 +22,7 @@ namespace SNSDownloader
         public void Reset()
         {
             this.IsReady = false;
+            this.Children.Clear();
             this.Url = string.Empty;
             this.Exception = null;
             this.OnReset();
@@ -52,6 +54,8 @@ namespace SNSDownloader
         protected abstract bool OnReady(string url);
 
         public abstract bool Download(DownloadOutput output);
+
+        public virtual bool CanSkip => true;
 
         public virtual string GetRequestUrl() => this.Url;
 

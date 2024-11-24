@@ -14,21 +14,21 @@ using SNSDownloader.Util;
 
 namespace SNSDownloader.Twitter
 {
-    public class TwitterTimelineSearchDownloader : AbstractDownloader
+    public class TwitterTimelineUserDownloader : AbstractDownloader
     {
-        public const string Prefix = "TwitterTimelineSearch:";
-        public static Regex SearchTimelinePattern { get; } = TwitterUtils.GetGraphqlPattern("SearchTimeline");
+        public const string Prefix = "TwitterTimelineUser:";
+        public static Regex SearchTimelinePattern { get; } = TwitterUtils.GetGraphqlPattern("UserTweets");
 
         private NetworkRequestSentEventArgs FirstRequest;
-        private string RawQuery;
+        private string UserName;
         private readonly AutoResetEvent ResetEvent;
 
-        public TwitterTimelineSearchDownloader()
+        public TwitterTimelineUserDownloader()
         {
             this.ResetEvent = new AutoResetEvent(false);
         }
 
-        public override string PlatformName => "TwitterTimelineSearch";
+        public override string PlatformName => "TwitterTimelineUser";
 
         public override void OnNetworkCreated(INetwork network)
         {
@@ -38,17 +38,17 @@ namespace SNSDownloader.Twitter
         protected override void OnReset()
         {
             this.FirstRequest = null;
-            this.RawQuery = null;
+            this.UserName = null;
             this.ResetEvent.Reset();
         }
 
         public override bool Test(string url) => url.StartsWith(Prefix);
 
-        public override string GetRequestUrl() => "https://x.com/search?q=" + HttpUtility.UrlEncode(this.RawQuery) + "&src=typed_query&f=live";
+        public override string GetRequestUrl() => $"https://x.com/{this.UserName}";
 
         protected override bool OnReady(string url)
         {
-            this.RawQuery = url[Prefix.Length..];
+            this.UserName = url[Prefix.Length..];
             return true;
         }
 
@@ -71,7 +71,7 @@ namespace SNSDownloader.Twitter
             {
                 this.Log($"Found");
 
-                var path = Path.Combine(output.Directory, $"{string.Concat(this.RawQuery.Split(Path.GetInvalidFileNameChars()))}_{DateTime.Now.ToFileNameString()}.json");
+                var path = Path.Combine(output.Directory, $"{string.Concat(this.UserName.Split(Path.GetInvalidFileNameChars()))}_{DateTime.Now.ToFileNameString()}.json");
                 FileStream fs = null;
                 StreamWriter sw = null;
                 JsonTextWriter jtw = null;
@@ -103,6 +103,18 @@ namespace SNSDownloader.Twitter
                             {
                                 this.Log($"All progressed");
                                 break;
+                            }
+                            else
+                            {
+                                foreach (var tw in tweets)
+                                {
+                                    if (output.Progressed.Contains(TwitterUtils.GetStatusUrl(tw)))
+                                    {
+
+                                    }
+
+                                }
+
                             }
 
                         }
@@ -138,6 +150,7 @@ namespace SNSDownloader.Twitter
                         }
 
                         jtw.Flush();
+
 
                         this.Log("========== Cursor ==========");
 
@@ -210,7 +223,7 @@ namespace SNSDownloader.Twitter
 
         private (List<TweetResultTweet> Tweets, string Cursor) GetTweetsAndNextCursor(JObject body)
         {
-            var instructions = body.SelectToken("data.search_by_raw_query.search_timeline.timeline.instructions");
+            var instructions = body.SelectToken("data.user.result.timeline_v2.timeline.instructions");
 
             var entires = TwitterUtils.GetTimelineEntries(instructions);
             var tweets = new List<TweetResultTweet>();
@@ -255,14 +268,8 @@ namespace SNSDownloader.Twitter
                 try
                 {
                     var payload = new SearchTimelinePayload(queries);
-                    var rawQuery = payload.Variables.Value<string>("rawQuery");
-
-                    if (string.Equals(this.RawQuery, rawQuery))
-                    {
-                        this.FirstRequest = e;
-                        this.ResetEvent.Set();
-                    }
-
+                    this.FirstRequest = e;
+                    this.ResetEvent.Set();
                 }
                 catch (Exception ex)
                 {

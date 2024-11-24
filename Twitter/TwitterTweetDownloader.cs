@@ -111,20 +111,45 @@ namespace SNSDownloader.Twitter
 
             var tweetPrefix = $"{createdAt.ToFileNameString()}_{found.User.ScreenName}_{tweetId}";
 
-            var downladIndex = 0;
             File.WriteAllText(Path.Combine(directory, $"{tweetPrefix}.json"), $"{this.Data}");
+            this.DownloadMedia(tweetPrefix, directory, results);
+        }
 
-            var mediaUrls = new Dictionary<string, string>();
+        private void DownloadMedia(string tweetPrefix, string directory, IEnumerable<TweetResult> results)
+        {
+            var downladIndex = 0;
+            var rrr = new List<TweetResult>(results);
 
-            foreach (var result in results)
+            for (var i = 0; i < rrr.Count; i++)
             {
+                var result = rrr[i];
+
                 if (result is TweetResultTweet tweet)
                 {
+                    //if (!string.IsNullOrEmpty(tweet.QuotedUrl) && !(tweet.QuotedResult == null || tweet.QuotedResult is TweetResultTombstone))
+                    //{
+                        //this.Children.Add(tweet.QuotedUrl);
+                    //}
+
+                    if (tweet.QuotedResult is TweetResultTweet quoted)
+                    {
+                        rrr.Add(quoted);
+                    }
+
+                    if (tweet.ReweetedResult is TweetResultTweet retweeted)
+                    {
+                        rrr.Add(retweeted);
+                    }
+
                     this.ProcessCard(tweet);
 
                     foreach (var url in tweet.Urls)
                     {
-                        if (url.ExpandedUrl.StartsWith("http://twitpic.com", StringComparison.OrdinalIgnoreCase) == true)
+                        if (url.ExpandedUrl == null)
+                        {
+
+                        }
+                        else if (url.ExpandedUrl.StartsWith("http://twitpic.com", StringComparison.OrdinalIgnoreCase) == true)
                         {
                             tweet.Media.Add(new MediaEntityTwitPic() { Url = url.ExpandedUrl });
                         }
@@ -135,14 +160,8 @@ namespace SNSDownloader.Twitter
 
                     foreach (var media in tweet.Media)
                     {
-                        if (mediaUrls.ContainsKey(media.Url) == true)
-                        {
-                            continue;
-                        }
-
                         var mediaFilePrefix = $"{tweetPrefix}_{++downladIndex}";
-                        var downloadedUrl = this.DownloadMedia(directory, mediaFilePrefix, media);
-                        mediaUrls[media.Url] = downloadedUrl;
+                        this.DownloadMedia(directory, mediaFilePrefix, media);
                     }
 
                 }

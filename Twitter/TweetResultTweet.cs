@@ -16,8 +16,9 @@ namespace SNSDownloader.Twitter
         public string Id { get; set; } = string.Empty;
         public LegacyUserData User { get; set; } = new LegacyUserData();
         public DateTime CreatedAt { get; set; }
-        public string QuotedId { get; set; } = string.Empty;
+        public string QuotedUrl { get; set; } = string.Empty;
         public TweetResult QuotedResult { get; set; } = null;
+        public TweetResult ReweetedResult { get; set; } = null;
         public string FullText { get; set; } = string.Empty;
         public List<UrlData> Urls { get; } = new List<UrlData>();
         public List<MediaEntity> Media { get; } = new List<MediaEntity>();
@@ -56,8 +57,15 @@ namespace SNSDownloader.Twitter
 
             if (quoted != null)
             {
-                this.QuotedId = quoted.Value<string>("expanded");
-                this.QuotedResult = TimelineEntryContentItem.GetTimelineTweet(core.SelectToken("quoted_status_result.result"));
+                this.QuotedUrl = quoted.Value<string>("expanded");
+                this.QuotedResult = TimelineEntryContentItem.GetTimelineTweet(json.SelectToken("quoted_status_result.result"));
+            }
+
+            var retweeted = core.SelectToken("retweeted_status_result");
+
+            if (retweeted != null)
+            {
+                this.ReweetedResult = TimelineEntryContentItem.GetTimelineTweet(json.SelectToken("retweeted_status_result.result"));
             }
 
             var mediaArray = core.SelectToken("extended_entities.media");

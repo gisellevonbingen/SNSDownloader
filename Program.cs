@@ -26,6 +26,7 @@ namespace SNSDownloader
         private static readonly List<AbstractDownloader> Downloaders = new List<AbstractDownloader>();
         public static TwitterTweetDownloader TwitterTweetDownloader { get; private set; }
         public static TwitterTimelineSearchDownloader TwitterTimelineSearchDownloader { get; private set; }
+        public static TwitterTimelineUserDownloader TwitterTimelineUserDownloader { get; private set; }
         public static TwitterAudioSpaceDownloader TwitterSpaceDownloader { get; private set; }
         public static TiktokDownloader TiktokDownloader { get; private set; }
         private static IWebDriver Driver;
@@ -56,6 +57,7 @@ namespace SNSDownloader
             {
                 Downloaders.Add(TwitterTweetDownloader = new TwitterTweetDownloader());
                 Downloaders.Add(TwitterTimelineSearchDownloader = new TwitterTimelineSearchDownloader());
+                Downloaders.Add(TwitterTimelineUserDownloader = new TwitterTimelineUserDownloader());
                 Downloaders.Add(TwitterSpaceDownloader = new TwitterAudioSpaceDownloader());
                 Downloaders.Add(TiktokDownloader = new TiktokDownloader());
 
@@ -123,45 +125,53 @@ namespace SNSDownloader
             for (var di = 0; di < inputs.Length; di++)
             {
                 var input = inputs[di];
-                var urls = JArray.Parse(File.ReadAllText(input)).Select(v => v.Value<string>()).ToList();
 
-                for (var ui = 0; ui < urls.Count; ui++)
+                try
                 {
-                    var url = urls[ui];
-                    var skip = progressed.Contains(ProcessProgressUrl(url));
+                    var urls = JArray.Parse(File.ReadAllText(input)).Select(v => v.Value<string>()).ToList();
 
-                    if (!skip || Config.LogSkipped)
+                    for (var ui = 0; ui < urls.Count; ui++)
                     {
-                        if (skippedCount > 0)
+                        var url = urls[ui];
+                        var skip = progressed.Contains(ProcessProgressUrl(url));
+
+                        if (!skip || Config.LogSkipped)
                         {
-                            Console.WriteLine($"Skipped Count: {skippedCount}");
-                            Console.WriteLine();
-                            skippedCount = 0;
+                            if (skippedCount > 0)
+                            {
+                                Console.WriteLine($"Skipped Count: {skippedCount}");
+                                Console.WriteLine();
+                                skippedCount = 0;
+                            }
+
+                            Console.WriteLine($"Input: {di + 1} / {inputs.Length}, {(di + 1) / (inputs.Length / 100.0F):F2}%");
+                            Console.WriteLine($"=> {input}");
+                            Console.WriteLine($"Url: {ui + 1} / {urls.Count}, {(ui + 1) / (urls.Count / 100.0F):F2}%");
+                        }
+                        else
+                        {
+                            skippedCount++;
                         }
 
-                        Console.WriteLine($"Input: {di + 1} / {inputs.Length}, {(di + 1) / (inputs.Length / 100.0F):F2}%");
-                        Console.WriteLine($"=> {input}");
-                        Console.WriteLine($"Url: {ui + 1} / {urls.Count}, {(ui + 1) / (urls.Count / 100.0F):F2}%");
-                        Console.WriteLine($"=> {url}");
-                    }
-                    else
-                    {
-                        skippedCount++;
-                    }
-
-                    if (skip)
-                    {
-                        if (Config.LogSkipped)
+                        if (skip)
                         {
-                            Console.WriteLine("Skipped");
-                            Console.WriteLine();
+                            if (Config.LogSkipped)
+                            {
+                                Console.WriteLine("Skipped");
+                                Console.WriteLine();
+                            }
+
+                            continue;
                         }
 
-                        continue;
+                        Download(progressed, outputDirectory, url);
+                        Console.WriteLine();
                     }
 
-                    Download(progressed, outputDirectory, url);
-                    Console.WriteLine();
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"Exception: {input}, {e}");
                 }
 
             }
@@ -189,6 +199,8 @@ namespace SNSDownloader
 
         private static void Download(ProgressTracker progressed, string outputDirectory, string url)
         {
+            Console.WriteLine($"=> {url}");
+
             Downloaders.ForEach(d => d.Reset());
             var downloader = Downloaders.FirstOrDefault(d => d.Ready(url));
 
@@ -211,7 +223,20 @@ namespace SNSDownloader
 
                     if (downloader.Download(output))
                     {
-                        progressed.Add(ProcessProgressUrl(url));
+                        foreach (var child in downloader.Children.ToList())
+                        {
+                            if (!progressed.Contains(ProcessProgressUrl(child)))
+                            {
+                                Download(progressed, outputDirectory, child);
+                            }
+
+                        }
+
+                        if (downloader.CanSkip)
+                        {
+                            progressed.Add(ProcessProgressUrl(url));
+                        }
+
                         break;
                     }
 
