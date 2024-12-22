@@ -128,7 +128,7 @@ namespace SNSDownloader.Twitter
                 {
                     //if (!string.IsNullOrEmpty(tweet.QuotedUrl) && !(tweet.QuotedResult == null || tweet.QuotedResult is TweetResultTombstone))
                     //{
-                        //this.Children.Add(tweet.QuotedUrl);
+                    //this.Children.Add(tweet.QuotedUrl);
                     //}
 
                     if (tweet.QuotedResult is TweetResultTweet quoted)
@@ -227,7 +227,7 @@ namespace SNSDownloader.Twitter
                 else
                 {
                     this.Log($"AudioSpace Found");
-                    tweet.Media.Add(new MediaEntityAudioSpace() { Url = audioSpaceUrl, SourceLocation = result.SourceLocation });
+                    tweet.Media.Add(new MediaEntityAudioSpace() { Url = audioSpaceUrl, Result = result });
                 }
 
             }
@@ -296,7 +296,7 @@ namespace SNSDownloader.Twitter
                 {
                     foreach (var tuple in downloadTupleList.Where(d => d.Download.Type == type).OrderByDescending(o => o.Bitrate))
                     {
-                        var path = Program.GetMediaFilePath(directory, mediaFilePrefix, tuple.Download.Url);
+                        var path = Program.GetMediaFilePath(directory, mediaFilePrefix, new Uri(tuple.Download.Url));
                         Program.DownloadMedia(path, tuple.Download);
                         return tuple.Download.Url;
                     }
@@ -307,12 +307,19 @@ namespace SNSDownloader.Twitter
             }
             else if (media is MediaEntityAudioSpace audioSpace)
             {
-                Program.DownloadMedia(Program.GetMediaFilePath(directory, mediaFilePrefix, audioSpace.SourceLocation), new MediaDownloadData()
+                var sourceLocation = audioSpace.Result.LiveVideoStream.SelectToken("source.location").Value<string>();
+                var downloadPath = Program.GetMediaFilePath(directory, mediaFilePrefix, new Uri(sourceLocation));
+
+                using var ms = new MemoryStream(Program.UTF8WithoutBOM.GetBytes(audioSpace.Result.ToJson().ToString()));
+                Program.DownloadBlob(Path.ChangeExtension(downloadPath, ".space"), ms);
+
+                Program.DownloadMedia(downloadPath, new MediaDownloadData()
                 {
                     Type = MediaDownloadData.DownloadType.M3U,
-                    Url = audioSpace.SourceLocation,
+                    Url = sourceLocation,
                 });
-                return audioSpace.SourceLocation;
+
+                return sourceLocation;
             }
             else
             {

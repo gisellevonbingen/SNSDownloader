@@ -51,7 +51,7 @@ namespace SNSDownloader
             TwitterLoginOptions = new ChromeOptions();
 
             CrawlOptions = new ChromeOptions();
-            CrawlOptions.AddArgument("--headless");
+            CrawlOptions.AddArgument("--headless --mute-audio");
 
             try
             {
@@ -350,21 +350,23 @@ namespace SNSDownloader
 
         public static void DownloadBlob(string path, HttpWebResponse response)
         {
-            using var mediaStream = new FileStream(path, FileMode.Create);
-            DownloadBlob(mediaStream, response);
+            using var responseStream = response.ReadAsStream();
+            DownloadBlob(path, responseStream);
         }
 
-        public static void DownloadBlob(Stream output, HttpWebResponse response)
+        public static void DownloadBlob(string path, Stream responseStream)
         {
-            using var responseStream = response.ReadAsStream();
-            responseStream.CopyTo(output, DownloadBufferSize);
+            using var mediaStream = new FileStream(path, FileMode.Create);
+            responseStream.CopyTo(mediaStream, DownloadBufferSize);
         }
 
         public static void DownloadBlob(string directory, string fileNamePrefix, HttpWebResponse response) => DownloadBlob(GetMediaFilePath(directory, fileNamePrefix, response.ResponseUri), response);
 
-        public static string GetMediaFilePath(string directory, string prefix, string url) => GetMediaFilePath(directory, prefix, new Uri(url));
+        public static void DownloadBlob(string directory, string fileNamePrefix, string fileName, Stream response) => DownloadBlob(GetMediaFilePath(directory, fileNamePrefix, fileName), response);
 
-        public static string GetMediaFilePath(string directory, string prefix, Uri uri) => Path.Combine(directory, $"{prefix}_{Path.GetFileName(uri.LocalPath)}");
+        public static string GetMediaFilePath(string directory, string prefix, string name) => Path.Combine(directory, $"{prefix}_{name}"); 
+
+        public static string GetMediaFilePath(string directory, string prefix, Uri uri) => GetMediaFilePath(directory, prefix, Path.GetFileName(uri.LocalPath));
 
         public static void DownloadMedia(string path, MediaDownloadData downloadData)
         {

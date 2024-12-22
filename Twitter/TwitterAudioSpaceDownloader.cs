@@ -13,7 +13,7 @@ namespace SNSDownloader.Twitter
 {
     public class TwitterAudioSpaceDownloader : AbstractDownloader
     {
-        public static Regex RequestUriPattern { get; } = new Regex("https:\\/\\/twitter.com\\/i\\/spaces/(?<id>.+)");
+        public static Regex RequestUriPattern { get; } = new Regex("https:\\/\\/x.com\\/i\\/spaces/(?<id>.+)");
         public static Regex AudioSpacePattern { get; } = TwitterUtils.GetGraphqlPattern("AudioSpaceById");
 
         private readonly AutoResetEvent ResultResetEvent;
@@ -145,8 +145,8 @@ namespace SNSDownloader.Twitter
                     var media = this.GetLiveVideoStream(audioSpace, this.RequestHeaders);
                     this.Result = new AudioSpaceResult()
                     {
-                        AudioSpace = audioSpace,
-                        SourceLocation = media.SelectToken("source.location").Value<string>(),
+                        Metadata = metadata,
+                        LiveVideoStream = media,
                     };
 
                 }
