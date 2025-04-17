@@ -223,7 +223,7 @@ namespace SNSDownloader.Twitter
 
         private (List<TweetResultTweet> Tweets, string Cursor) GetTweetsAndNextCursor(JObject body)
         {
-            var instructions = body.SelectToken("data.user.result.timeline_v2.timeline.instructions");
+            var instructions = body.SelectToken("data.user.result.timeline.timeline.instructions");
 
             var entires = TwitterUtils.GetTimelineEntries(instructions);
             var tweets = new List<TweetResultTweet>();

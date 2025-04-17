@@ -65,7 +65,7 @@ namespace SNSDownloader.Twitter
 
             if (retweeted != null)
             {
-                this.ReweetedResult = TimelineEntryContentItem.GetTimelineTweet(json.SelectToken("retweeted_status_result.result"));
+                this.ReweetedResult = TimelineEntryContentItem.GetTimelineTweet(core.SelectToken("retweeted_status_result.result"));
             }
 
             var mediaArray = core.SelectToken("extended_entities.media");
