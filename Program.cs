@@ -28,14 +28,16 @@ namespace SNSDownloader
         public static TwitterTimelineSearchDownloader TwitterTimelineSearchDownloader { get; private set; }
         public static TwitterTimelineUserDownloader TwitterTimelineUserDownloader { get; private set; }
         public static TwitterAudioSpaceDownloader TwitterSpaceDownloader { get; private set; }
+        public static TiktokUserDownloader TiktokUserDownloader { get; private set; }
         public static TiktokDownloader TiktokDownloader { get; private set; }
         private static IWebDriver Driver;
 
-        private static ChromeOptions TwitterLoginOptions;
+        private static ChromeOptions LoginOptions;
         private static ChromeOptions CrawlOptions;
 
         private static int ReaminCrawlCount = 0;
         private static bool TwitterLogined = false;
+        private static bool TiktokLogined = false;
         private static bool FFmpegEntered = false;
 
         public static string ConfigPath { get; } = Path.Combine(Directory.GetCurrentDirectory(), "Config.json");
@@ -48,10 +50,12 @@ namespace SNSDownloader
                 return;
             }
 
-            TwitterLoginOptions = new ChromeOptions();
+            LoginOptions = new ChromeOptions();
 
             CrawlOptions = new ChromeOptions();
+            CrawlOptions.BinaryLocation = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
             CrawlOptions.AddArgument("--headless --mute-audio");
+            //CrawlOptions.AddArgument("--mute-audio");
 
             try
             {
@@ -59,6 +63,7 @@ namespace SNSDownloader
                 Downloaders.Add(TwitterTimelineSearchDownloader = new TwitterTimelineSearchDownloader());
                 Downloaders.Add(TwitterTimelineUserDownloader = new TwitterTimelineUserDownloader());
                 Downloaders.Add(TwitterSpaceDownloader = new TwitterAudioSpaceDownloader());
+                Downloaders.Add(TiktokUserDownloader = new TiktokUserDownloader());
                 Downloaders.Add(TiktokDownloader = new TiktokDownloader());
 
                 Console.CancelKeyPress += (sender, e) => Driver.DisposeQuietly();
@@ -262,7 +267,7 @@ namespace SNSDownloader
             {
                 if (Config.Twitter.Cookies.Count == 0)
                 {
-                    RecreateDriver(TwitterLoginOptions);
+                    RecreateDriver(LoginOptions);
                     Driver.Navigate().GoToUrl("https://x.com/i/flow/login/");
 
                     Console.WriteLine("First, login twitter account");
@@ -275,6 +280,25 @@ namespace SNSDownloader
                 }
 
                 TwitterLogined = true;
+            }
+
+            if ((downloader == TiktokUserDownloader ) && !TiktokLogined)
+            {
+                if (Config.Tiktok.Cookies.Count == 0)
+                {
+                    RecreateDriver(LoginOptions);
+                    Driver.Navigate().GoToUrl("https://www.tiktok.com/@itsukinatsume");
+
+                    Console.WriteLine("First, login tiktok account");
+                    Console.Write("Press enter to start after login");
+                    Console.ReadLine();
+
+                    ReaminCrawlCount = 0;
+                    Config.Tiktok.Cookies.AddRange(GetCookies(Driver, "https://www.tiktok.com/"));
+                    SaveConfig();
+                }
+
+                TiktokLogined = true;
             }
 
             if (ReaminCrawlCount <= 0)
@@ -326,6 +350,7 @@ namespace SNSDownloader
             }
 
             PutCookies(driver, "https://x.com/", Config.Twitter.Cookies);
+            PutCookies(driver, "https://www.tiktok.com/", Config.Tiktok.Cookies);
 
             return driver;
         }

@@ -6,11 +6,11 @@ using Newtonsoft.Json.Linq;
 
 namespace SNSDownloader.Configs
 {
-    public class TwitterConfig
+    public class TiktokConfig
     {
         public List<OpenQA.Selenium.Cookie> Cookies { get; }
 
-        public TwitterConfig(JToken json)
+        public TiktokConfig(JToken json)
         {
             this.Cookies = JsonUtils.ReadCookies(json.Value<JArray>("Cookies")).ToList();
         }

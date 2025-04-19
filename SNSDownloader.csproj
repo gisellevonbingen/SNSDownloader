@@ -6,10 +6,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="HtmlAgilityPack" Version="1.11.59" />
+    <Compile Remove="bin\Debug\netcoreapp3.1\Input\TiktokUser\**" />
+    <EmbeddedResource Remove="bin\Debug\netcoreapp3.1\Input\TiktokUser\**" />
+    <None Remove="bin\Debug\netcoreapp3.1\Input\TiktokUser\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="HtmlAgilityPack" Version="1.12.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="Selenium.WebDriver" Version="4.22.0" />
-    <PackageReference Include="Selenium.WebDriver.ChromeDriver" Version="128.0.6613.13700" />
+    <PackageReference Include="Selenium.WebDriver" Version="4.30.0" />
+    <PackageReference Include="Selenium.WebDriver.ChromeDriver" Version="134.0.6998.16500" />
   </ItemGroup>
 
 </Project>
