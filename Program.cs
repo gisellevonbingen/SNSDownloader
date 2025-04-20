@@ -223,7 +223,6 @@ namespace SNSDownloader
                 try
                 {
                     downloader.Log($"Ready");
-
                     NavigateToDownload(downloader);
 
                     if (downloader.Download(output))
@@ -274,15 +273,15 @@ namespace SNSDownloader
                     Console.Write("Press enter to start after login");
                     Console.ReadLine();
 
-                    ReaminCrawlCount = 0;
                     Config.Twitter.Cookies.AddRange(GetCookies(Driver, "https://x.com/"));
                     SaveConfig();
                 }
 
+                PutCookies(Driver, "https://x.com/", Config.Twitter.Cookies);
                 TwitterLogined = true;
             }
 
-            if ((downloader == TiktokUserDownloader ) && !TiktokLogined)
+            if ((downloader == TiktokUserDownloader) && !TiktokLogined)
             {
                 if (Config.Tiktok.Cookies.Count == 0)
                 {
@@ -293,11 +292,11 @@ namespace SNSDownloader
                     Console.Write("Press enter to start after login");
                     Console.ReadLine();
 
-                    ReaminCrawlCount = 0;
                     Config.Tiktok.Cookies.AddRange(GetCookies(Driver, "https://www.tiktok.com/"));
                     SaveConfig();
                 }
 
+                PutCookies(Driver, "https://www.tiktok.com/", Config.Tiktok.Cookies);
                 TiktokLogined = true;
             }
 
@@ -305,6 +304,7 @@ namespace SNSDownloader
             {
                 ReaminCrawlCount = 50;
                 RecreateDriver(CrawlOptions);
+                Console.WriteLine("Driver Recreated");
 
                 var network = Driver.Manage().Network;
                 Downloaders.ForEach(d => d.OnNetworkCreated(network));
@@ -349,9 +349,6 @@ namespace SNSDownloader
                 PutCookies(driver, url, cookies);
             }
 
-            PutCookies(driver, "https://x.com/", Config.Twitter.Cookies);
-            PutCookies(driver, "https://www.tiktok.com/", Config.Tiktok.Cookies);
-
             return driver;
         }
 
@@ -364,6 +361,7 @@ namespace SNSDownloader
         private static void PutCookies(IWebDriver driver, string url, IEnumerable<OpenQA.Selenium.Cookie> cookies)
         {
             driver.Navigate().GoToUrl(url);
+            Thread.Sleep(1000);
             driver.Manage().Cookies.DeleteAllCookies();
 
             foreach (var cookie in cookies)
@@ -389,7 +387,7 @@ namespace SNSDownloader
 
         public static void DownloadBlob(string directory, string fileNamePrefix, string fileName, Stream response) => DownloadBlob(GetMediaFilePath(directory, fileNamePrefix, fileName), response);
 
-        public static string GetMediaFilePath(string directory, string prefix, string name) => Path.Combine(directory, $"{prefix}_{name}"); 
+        public static string GetMediaFilePath(string directory, string prefix, string name) => Path.Combine(directory, $"{prefix}_{name}");
 
         public static string GetMediaFilePath(string directory, string prefix, Uri uri) => GetMediaFilePath(directory, prefix, Path.GetFileName(uri.LocalPath));
 
