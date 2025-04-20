@@ -120,7 +120,7 @@ namespace SNSDownloader
             Directory.CreateDirectory(outputDirectory);
 
             var inputs = Directory.GetFiles(inputDirectory, "*.json", SearchOption.AllDirectories);
-            var progressed = new ProgressTracker(Path.Combine(inputDirectory, "progress.txt"));
+            using var progressed = new ProgressTracker(Path.Combine(inputDirectory, "progress.txt"));
 
             Console.WriteLine($"Found input files: {inputs.Length}");
             Console.WriteLine();
@@ -138,7 +138,7 @@ namespace SNSDownloader
                     for (var ui = 0; ui < urls.Count; ui++)
                     {
                         var url = urls[ui];
-                        var skip = progressed.Contains(ProcessProgressUrl(url));
+                        var skip = progressed.Contains(url);
 
                         if (!skip || Config.LogSkipped)
                         {
@@ -220,6 +220,17 @@ namespace SNSDownloader
 
             while (true)
             {
+                if (progressed.Contains(url))
+                {
+                    if (Config.LogSkipped)
+                    {
+                        Console.WriteLine("Skipped");
+                        Console.WriteLine();
+                    }
+
+                    break;
+                }
+
                 try
                 {
                     downloader.Log($"Ready");
@@ -229,7 +240,7 @@ namespace SNSDownloader
                     {
                         foreach (var child in downloader.Children.ToList())
                         {
-                            if (!progressed.Contains(ProcessProgressUrl(child)))
+                            if (!progressed.Contains(child))
                             {
                                 Download(progressed, outputDirectory, child);
                             }
@@ -238,7 +249,7 @@ namespace SNSDownloader
 
                         if (downloader.CanSkip)
                         {
-                            progressed.Add(ProcessProgressUrl(url));
+                            progressed.Add(url);
                         }
 
                         break;
@@ -257,8 +268,6 @@ namespace SNSDownloader
             }
 
         }
-
-        private static string ProcessProgressUrl(string url) => url.Replace("twitter.com", "x.com");
 
         private static void NavigateToDownload(AbstractDownloader downloader)
         {
