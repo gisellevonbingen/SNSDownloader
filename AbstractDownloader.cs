@@ -53,7 +53,7 @@ namespace SNSDownloader
 
         protected abstract bool OnReady(string url);
 
-        public abstract bool Download(DownloadOutput output);
+        public abstract DownloadResult Download(DownloadOutput output);
 
         public virtual bool CanSkip => true;
 

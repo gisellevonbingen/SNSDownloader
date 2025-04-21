@@ -47,11 +47,11 @@ namespace SNSDownloader.Tiktok
             return true;
         }
 
-        public override bool Download(DownloadOutput output)
+        public override DownloadResult Download(DownloadOutput output)
         {
             if (!this.WaitAll(this.ResetEvent))
             {
-                return false;
+                return DownloadResult.Failed;
             }
             else if (this.Exception != null)
             {
@@ -60,7 +60,7 @@ namespace SNSDownloader.Tiktok
             else if (this.FirstResponse == null)
             {
                 this.Log("Not found");
-                return false;
+                return DownloadResult.Failed;
             }
             else
             {
@@ -76,7 +76,7 @@ namespace SNSDownloader.Tiktok
                     File.WriteAllText(path, new JArray(videoUrls).ToString());
                 }
 
-                return true;
+                return DownloadResult.Success;
             }
 
         }

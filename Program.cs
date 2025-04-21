@@ -236,7 +236,9 @@ namespace SNSDownloader
                     downloader.Log($"Ready");
                     NavigateToDownload(downloader);
 
-                    if (downloader.Download(output))
+                    var result = downloader.Download(output);
+
+                    if (result == DownloadResult.Success)
                     {
                         foreach (var child in downloader.Children.ToList())
                         {
@@ -250,6 +252,16 @@ namespace SNSDownloader
                         if (downloader.CanSkip)
                         {
                             progressed.Add(url);
+                        }
+
+                        break;
+                    }
+                    else if (result == DownloadResult.Deleted)
+                    {
+                        if (downloader.CanSkip)
+                        {
+                            progressed.Add(url);
+                            deleted.Add(url);
                         }
 
                         break;

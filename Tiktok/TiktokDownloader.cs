@@ -61,11 +61,11 @@ namespace SNSDownloader.Tiktok
 
         protected override bool OnReady(string url) => true;
 
-        public override bool Download(DownloadOutput output)
+        public override DownloadResult Download(DownloadOutput output)
         {
             if (!this.WaitAll(this.ItemResetEvent, this.VideoResetEvent))
             {
-                return false;
+                return DownloadResult.Failed;
             }
             else if (this.Exception != null)
             {
@@ -74,7 +74,7 @@ namespace SNSDownloader.Tiktok
             else if (this.Item == null || this.Video == null)
             {
                 this.Log("Not found");
-                return false;
+                return DownloadResult.Failed;
             }
             else
             {
@@ -93,7 +93,7 @@ namespace SNSDownloader.Tiktok
 
                 File.WriteAllText(Path.Combine(directory, $"{fileprefix}.json"), $"{this.Item}");
                 Program.DownloadBlob(Path.Combine(directory, $"{fileprefix}.mp4"), this.Video.Response);
-                return true;
+                return DownloadResult.Success;
             }
 
         }

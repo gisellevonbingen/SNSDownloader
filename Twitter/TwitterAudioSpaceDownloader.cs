@@ -57,21 +57,21 @@ namespace SNSDownloader.Twitter
 
         protected override bool OnReady(string url) => true;
 
-        public override bool Download(DownloadOutput output)
+        public override DownloadResult Download(DownloadOutput output)
         {
             if (!this.TryGetResult(out var result))
             {
-                return false;
+                return DownloadResult.Failed;
             }
             else if (result == null)
             {
                 this.Log("Not found");
-                return false;
+                return DownloadResult.Failed;
             }
             else
             {
                 this.Log($"Found");
-                return false;
+                return DownloadResult.Failed;
             }
 
         }

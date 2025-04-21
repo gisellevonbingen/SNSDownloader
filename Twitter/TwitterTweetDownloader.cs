@@ -56,11 +56,11 @@ namespace SNSDownloader.Twitter
 
         protected override bool OnReady(string url) => true;
 
-        public override bool Download(DownloadOutput output)
+        public override DownloadResult Download(DownloadOutput output)
         {
             if (!this.WaitAll(this.ResetEvent))
             {
-                return false;
+                return DownloadResult.Failed;
             }
             else if (this.Exception != null)
             {
@@ -69,27 +69,35 @@ namespace SNSDownloader.Twitter
             else if (this.Data == null)
             {
                 this.Log("Not found");
-                return false;
+                return DownloadResult.Failed;
             }
             else
             {
                 var id = TwitterUtils.GetTweetId(this.Url);
 
                 this.Log($"Found");
-                this.DownloadTweet(output, id);
-                return true;
+                return this.DownloadTweet(output, id);
             }
 
         }
 
-        private void DownloadTweet(DownloadOutput output, string tweetId)
+        private DownloadResult DownloadTweet(DownloadOutput output, string tweetId)
         {
             var entires = new List<TimelineEntry>();
-            var errors = this.Data.Value<JToken>("errors");
+            var errors = this.Data.Value<JArray>("errors");
 
             if (errors != null)
             {
-                throw new Exception($"{errors}");
+                if (errors.Count == 1 && errors[0].Value<string>("message") == "_Missing: No status found with that ID.")
+                {
+                    this.Log("Deleted");
+                    return DownloadResult.Deleted;
+                }
+                else
+                {
+                    throw new Exception($"Error: {errors}");
+                }
+
             }
 
             var instructions = this.Data.SelectToken("data.threaded_conversation_with_injections_v2.instructions");
@@ -113,6 +121,8 @@ namespace SNSDownloader.Twitter
 
             File.WriteAllText(Path.Combine(directory, $"{tweetPrefix}.json"), $"{this.Data}");
             this.DownloadMedia(tweetPrefix, directory, results);
+
+            return DownloadResult.Success;
         }
 
         private void DownloadMedia(string tweetPrefix, string directory, IEnumerable<TweetResult> results)

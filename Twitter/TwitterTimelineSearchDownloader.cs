@@ -52,11 +52,11 @@ namespace SNSDownloader.Twitter
             return true;
         }
 
-        public override bool Download(DownloadOutput output)
+        public override DownloadResult Download(DownloadOutput output)
         {
             if (!this.WaitAll(this.ResetEvent))
             {
-                return false;
+                return DownloadResult.Failed;
             }
             else if (this.Exception != null)
             {
@@ -65,7 +65,7 @@ namespace SNSDownloader.Twitter
             else if (this.FirstRequest == null)
             {
                 this.Log("Not found");
-                return false;
+                return DownloadResult.Failed;
             }
             else
             {
@@ -201,7 +201,7 @@ namespace SNSDownloader.Twitter
                     File.Delete(path);
                 }
 
-                return true;
+                return DownloadResult.Success;
             }
 
         }
