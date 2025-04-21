@@ -120,7 +120,8 @@ namespace SNSDownloader
             Directory.CreateDirectory(outputDirectory);
 
             var inputs = Directory.GetFiles(inputDirectory, "*.json", SearchOption.AllDirectories);
-            using var progressed = new ProgressTracker(Path.Combine(inputDirectory, "progress.txt"));
+            using var progressed = new UrlCollection("progressed", Path.Combine(inputDirectory, "progress.txt"));
+            using var deleted = new UrlCollection("deleted", Path.Combine(inputDirectory, "deleted.txt"));
 
             Console.WriteLine($"Found input files: {inputs.Length}");
             Console.WriteLine();
@@ -169,7 +170,7 @@ namespace SNSDownloader
                             continue;
                         }
 
-                        Download(progressed, outputDirectory, url);
+                        Download(progressed, deleted, outputDirectory, url);
                         Console.WriteLine();
                     }
 
@@ -202,7 +203,7 @@ namespace SNSDownloader
             return func(downloader);
         }
 
-        private static void Download(ProgressTracker progressed, string outputDirectory, string url)
+        private static void Download(UrlCollection progressed, UrlCollection deleted, string outputDirectory, string url)
         {
             Console.WriteLine($"=> {url}");
 
@@ -244,7 +245,7 @@ namespace SNSDownloader
                         {
                             if (!progressed.Contains(child))
                             {
-                                Download(progressed, outputDirectory, child);
+                                Download(progressed, deleted, outputDirectory, child);
                             }
 
                         }
@@ -283,6 +284,22 @@ namespace SNSDownloader
 
         private static void NavigateToDownload(AbstractDownloader downloader)
         {
+            if (ReaminCrawlCount <= 0)
+            {
+                ReaminCrawlCount = 50;
+                RecreateDriver(CrawlOptions);
+                Console.WriteLine("Driver Recreated");
+
+                var network = Driver.Manage().Network;
+                Downloaders.ForEach(d => d.OnNetworkCreated(network));
+
+                network.StartMonitoring().Wait();
+                TwitterLogined = false;
+                TiktokLogined = false;
+            }
+
+            ReaminCrawlCount--;
+
             if ((downloader == TwitterTweetDownloader || downloader == TwitterTimelineSearchDownloader || downloader == TwitterSpaceDownloader) && !TwitterLogined)
             {
                 if (Config.Twitter.Cookies.Count == 0)
@@ -321,19 +338,6 @@ namespace SNSDownloader
                 TiktokLogined = true;
             }
 
-            if (ReaminCrawlCount <= 0)
-            {
-                ReaminCrawlCount = 50;
-                RecreateDriver(CrawlOptions);
-                Console.WriteLine("Driver Recreated");
-
-                var network = Driver.Manage().Network;
-                Downloaders.ForEach(d => d.OnNetworkCreated(network));
-
-                network.StartMonitoring().Wait();
-            }
-
-            ReaminCrawlCount--;
             Driver.Navigate().GoToUrl(downloader.GetRequestUrl());
         }
 

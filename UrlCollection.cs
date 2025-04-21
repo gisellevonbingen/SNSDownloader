@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -8,8 +9,9 @@ using SNSDownloader.Util;
 
 namespace SNSDownloader
 {
-    public class ProgressTracker : IDisposable
+    public class UrlCollection : IEnumerable<string>, IDisposable
     {
+        public string Name { get; private set; }
         public string Path { get; private set; }
 
         private readonly FileSystemWatcher Watcher;
@@ -18,8 +20,9 @@ namespace SNSDownloader
         private readonly object ReloadLock = new object();
         private bool Locking = false;
 
-        public ProgressTracker(string path)
+        public UrlCollection(string name, string path)
         {
+            this.Name = name;
             this.Path = path;
 
             this.Watcher = new FileSystemWatcher(System.IO.Path.GetDirectoryName(path), System.IO.Path.GetFileName(path));
@@ -52,7 +55,7 @@ namespace SNSDownloader
 
                 }
 
-                Console.WriteLine("ProgressTracker Reloaded");
+                Console.WriteLine($"{this.Name} Reloaded");
             }
             catch
             {
@@ -113,7 +116,11 @@ namespace SNSDownloader
             this.Dispose(true);
         }
 
-        ~ProgressTracker()
+        public IEnumerator<string> GetEnumerator() => this.Set.GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => this.GetEnumerator();
+
+        ~UrlCollection()
         {
             this.Dispose(false);
         }

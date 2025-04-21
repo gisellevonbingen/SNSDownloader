@@ -6,10 +6,10 @@ namespace SNSDownloader
 {
     public class DownloadOutput
     {
-        public ProgressTracker Progressed { get; }
+        public UrlCollection Progressed { get; }
         public string Directory { get; }
 
-        public DownloadOutput(ProgressTracker progressed, string directory)
+        public DownloadOutput(UrlCollection progressed, string directory)
         {
             this.Progressed = progressed;
             this.Directory = directory;
