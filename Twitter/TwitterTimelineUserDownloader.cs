@@ -188,7 +188,8 @@ namespace SNSDownloader.Twitter
                     catch (Exception e)
                     {
                         this.Log("========== Exception ==========");
-                        this.Log(rAsString);
+                        this.Log($"URI: {nextUri}");
+                        this.Log($"Response: {rAsString}");
                         this.Log(e);
                         hasException = true;
                     }
