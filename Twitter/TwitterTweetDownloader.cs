@@ -135,6 +135,7 @@ namespace SNSDownloader.Twitter
         {
             var downladIndex = 0;
             var rrr = new List<TweetResult>(results);
+            var set = new HashSet<string>();
 
             for (var i = 0; i < rrr.Count; i++)
             {
@@ -176,8 +177,12 @@ namespace SNSDownloader.Twitter
 
                     foreach (var media in tweet.Media)
                     {
-                        var mediaFilePrefix = $"{tweetPrefix}_{++downladIndex}";
-                        this.DownloadMedia(directory, mediaFilePrefix, media);
+                        if (set.Add(media.Url))
+                        {
+                            var mediaFilePrefix = $"{tweetPrefix}_{++downladIndex}";
+                            this.DownloadMedia(directory, mediaFilePrefix, media);
+                        }
+
                     }
 
                 }
