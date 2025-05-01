@@ -284,61 +284,70 @@ namespace SNSDownloader
 
         private static void NavigateToDownload(AbstractDownloader downloader)
         {
-            if (ReaminCrawlCount <= 0)
+            while (true)
             {
-                ReaminCrawlCount = 50;
-                RecreateDriver(CrawlOptions);
-                Console.WriteLine("Driver Recreated");
-
-                var network = Driver.Manage().Network;
-                Downloaders.ForEach(d => d.OnNetworkCreated(network));
-
-                network.StartMonitoring().Wait();
-                TwitterLogined = false;
-                TiktokLogined = false;
-            }
-
-            ReaminCrawlCount--;
-
-            if ((downloader == TwitterTweetDownloader || downloader == TwitterTimelineSearchDownloader || downloader == TwitterSpaceDownloader) && !TwitterLogined)
-            {
-                if (Config.Twitter.Cookies.Count == 0)
+                if (ReaminCrawlCount <= 0)
                 {
-                    RecreateDriver(LoginOptions);
-                    Driver.Navigate().GoToUrl("https://x.com/i/flow/login/");
+                    ReaminCrawlCount = 50;
+                    RecreateDriver(CrawlOptions);
+                    Console.WriteLine("Driver Recreated");
 
-                    Console.WriteLine("First, login twitter account");
-                    Console.Write("Press enter to start after login");
-                    Console.ReadLine();
+                    var network = Driver.Manage().Network;
+                    Downloaders.ForEach(d => d.OnNetworkCreated(network));
 
-                    Config.Twitter.Cookies.AddRange(GetCookies(Driver, "https://x.com/"));
-                    SaveConfig();
+                    network.StartMonitoring().Wait();
+                    TwitterLogined = false;
+                    TiktokLogined = false;
                 }
 
-                PutCookies(Driver, "https://x.com/", Config.Twitter.Cookies);
-                TwitterLogined = true;
-            }
+                ReaminCrawlCount--;
 
-            if ((downloader == TiktokUserDownloader) && !TiktokLogined)
-            {
-                if (Config.Tiktok.Cookies.Count == 0)
+                if ((downloader == TwitterTweetDownloader || downloader == TwitterTimelineUserDownloader || downloader == TwitterTimelineSearchDownloader || downloader == TwitterSpaceDownloader) && !TwitterLogined)
                 {
-                    RecreateDriver(LoginOptions);
-                    Driver.Navigate().GoToUrl("https://www.tiktok.com/@itsukinatsume");
+                    if (Config.Twitter.Cookies.Count == 0)
+                    {
+                        RecreateDriver(LoginOptions);
+                        Driver.Navigate().GoToUrl("https://x.com/i/flow/login/");
 
-                    Console.WriteLine("First, login tiktok account");
-                    Console.Write("Press enter to start after login");
-                    Console.ReadLine();
+                        Console.WriteLine("First, login twitter account");
+                        Console.Write("Press enter to start after login");
+                        Console.ReadLine();
 
-                    Config.Tiktok.Cookies.AddRange(GetCookies(Driver, "https://www.tiktok.com/"));
-                    SaveConfig();
+                        Config.Twitter.Cookies.AddRange(GetCookies(Driver, "https://x.com/"));
+                        SaveConfig();
+                        ReaminCrawlCount = 0;
+                        continue;
+                    }
+
+                    PutCookies(Driver, "https://x.com/", Config.Twitter.Cookies);
+                    TwitterLogined = true;
                 }
 
-                PutCookies(Driver, "https://www.tiktok.com/", Config.Tiktok.Cookies);
-                TiktokLogined = true;
+                if ((downloader == TiktokUserDownloader) && !TiktokLogined)
+                {
+                    if (Config.Tiktok.Cookies.Count == 0)
+                    {
+                        RecreateDriver(LoginOptions);
+                        Driver.Navigate().GoToUrl("https://www.tiktok.com/@itsukinatsume");
+
+                        Console.WriteLine("First, login tiktok account");
+                        Console.Write("Press enter to start after login");
+                        Console.ReadLine();
+
+                        Config.Tiktok.Cookies.AddRange(GetCookies(Driver, "https://www.tiktok.com/"));
+                        SaveConfig();
+                        ReaminCrawlCount = 0;
+                        continue;
+                    }
+
+                    PutCookies(Driver, "https://www.tiktok.com/", Config.Tiktok.Cookies);
+                    TiktokLogined = true;
+                }
+
+                Driver.Navigate().GoToUrl(downloader.GetRequestUrl());
+                break;
             }
 
-            Driver.Navigate().GoToUrl(downloader.GetRequestUrl());
         }
 
         private static void RecreateDriver(ChromeOptions options)
