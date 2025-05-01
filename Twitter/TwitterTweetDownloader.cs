@@ -113,6 +113,12 @@ namespace SNSDownloader.Twitter
 
             var results = entires.Select(i => i.Content).OfType<TimelineEntryContentItem>().Select(item => item.Result).Where(t => t != null).ToArray();
             var found = results.OfType<TweetResultTweet>().FirstOrDefault(i => i.Id.Equals(tweetId));
+
+            if (found == null && results.Length == 1 && results[0] is TweetResultTombstone)
+            {
+                return DownloadResult.Deleted;
+            }
+
             var createdAt = found.CreatedAt.ToLocalTime();
             var directory = Path.Combine(output.Directory, found.User.ScreenName, $"{createdAt:yyyy}", $"{createdAt.ToYearMonthString()}");
             Directory.CreateDirectory(directory);
