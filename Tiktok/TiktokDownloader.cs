@@ -20,7 +20,9 @@ namespace SNSDownloader.Tiktok
         private readonly AutoResetEvent ItemResetEvent;
         private readonly AutoResetEvent VideoResetEvent;
 
+        private bool Deleted;
         private JToken Item;
+        private string[] VideoUrls;
         private WrappedHttpResponse Video;
 
         public TiktokDownloader()
@@ -28,7 +30,9 @@ namespace SNSDownloader.Tiktok
             this.ItemResetEvent = new AutoResetEvent(false);
             this.VideoResetEvent = new AutoResetEvent(false);
 
+            this.Deleted = false;
             this.Item = null;
+            this.VideoUrls = null;
             this.Video = null;
         }
 
@@ -42,7 +46,9 @@ namespace SNSDownloader.Tiktok
 
         protected override void OnReset()
         {
+            this.Deleted = false;
             this.Item = null;
+            this.VideoUrls = null;
             this.Video.DisposeQuietly();
             this.Video = null;
             this.ItemResetEvent.Reset();
@@ -63,22 +69,46 @@ namespace SNSDownloader.Tiktok
 
         public override DownloadResult Download(DownloadOutput output)
         {
-            if (!this.WaitAll(this.ItemResetEvent, this.VideoResetEvent))
+            if (this.WaitAll(this.ItemResetEvent))
+            {
+                if (this.Exception != null)
+                {
+                    throw new Exception(string.Empty, this.Exception);
+                }
+                else if (this.Deleted)
+                {
+                    this.Log("Deleted");
+                    return DownloadResult.Deleted;
+                }
+
+            }
+            else
             {
                 return DownloadResult.Failed;
             }
-            else if (this.Exception != null)
+
+            if (this.WaitAll(this.VideoResetEvent))
             {
-                throw new Exception(string.Empty, this.Exception);
+                if (this.Exception != null)
+                {
+                    throw new Exception(string.Empty, this.Exception);
+                }
+
             }
-            else if (this.Item == null || this.Video == null)
+            else
+            {
+                return DownloadResult.Failed;
+            }
+
+            
+            if (this.Item == null || this.Video == null)
             {
                 this.Log("Not found");
                 return DownloadResult.Failed;
             }
             else
             {
-                this.Log($"Found");
+                this.Log($"Found completed");
 
                 var url = this.Url;
                 var id = this.GetArticleId(url);
@@ -104,11 +134,12 @@ namespace SNSDownloader.Tiktok
             {
                 return;
             }
-            else if (e.RequestUrl.StartsWith("https://v16-webapp-prime.tiktok.com/video"))
+            else if (this.VideoUrls != null && this.VideoUrls.Contains(e.RequestUrl))
             {
                 try
                 {
                     this.Video = Program.CreateRequest(e).GetWrappedResponse();
+                    this.Log($"Found Video");
                 }
                 catch (Exception ex)
                 {
@@ -133,7 +164,21 @@ namespace SNSDownloader.Tiktok
                     var document = new HtmlDocument();
                     document.LoadHtml(e.ResponseBody);
                     var json = JObject.Parse(document.DocumentNode.SelectSingleNode("//*[@id=\"__UNIVERSAL_DATA_FOR_REHYDRATION__\"]").InnerText);
-                    this.Item = json["__DEFAULT_SCOPE__"]["webapp.video-detail"]["itemInfo"]["itemStruct"];
+                    var detail = json["__DEFAULT_SCOPE__"]["webapp.video-detail"];
+
+                    if (detail.Value<string>("statusMsg") == "status_deleted")
+                    {
+                        this.Deleted = true;
+                        this.ItemResetEvent.Set();
+                        this.VideoResetEvent.Set();
+                        return;
+                    }
+
+                    this.Item = detail.SelectToken("itemInfo.itemStruct");
+                    var size = this.Item.SelectToken("video.size").Value<int>();
+                    var bitrateInfo = this.Item.SelectToken("video.bitrateInfo").Where(j => !j.Value<string>("GearName").Contains("adapt") && j.SelectToken("PlayAddr.DataSize").Value<int>() == size).FirstOrDefault();
+                    this.VideoUrls = bitrateInfo.SelectToken("PlayAddr.UrlList").Values<string>().ToArray();
+                    this.Log($"Found Item");
                 }
                 catch (Exception ex)
                 {

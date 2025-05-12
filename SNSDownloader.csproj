@@ -7,8 +7,11 @@
 
   <ItemGroup>
     <Compile Remove="bin\Debug\netcoreapp3.1\Input\TiktokUser\**" />
+    <Compile Remove="bin\Debug\netcoreapp3.1\Input\TikTok\**" />
     <EmbeddedResource Remove="bin\Debug\netcoreapp3.1\Input\TiktokUser\**" />
+    <EmbeddedResource Remove="bin\Debug\netcoreapp3.1\Input\TikTok\**" />
     <None Remove="bin\Debug\netcoreapp3.1\Input\TiktokUser\**" />
+    <None Remove="bin\Debug\netcoreapp3.1\Input\TikTok\**" />
   </ItemGroup>
 
   <ItemGroup>
