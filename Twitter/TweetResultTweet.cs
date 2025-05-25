@@ -32,10 +32,19 @@ namespace SNSDownloader.Twitter
         public TweetResultTweet(JToken json) : base(json)
         {
             var core = json.SelectToken("legacy");
-            var user = json.SelectToken("core.user_results.result.legacy");
+            var userResult = json.SelectToken("core.user_results.result");
 
             this.Id = core.Value<string>("id_str");
-            this.User = new LegacyUserData(user);
+
+            var userCore = userResult.Value<JToken>("core");
+            var userLegacy = userResult.Value<JToken>("legacy");
+            this.User = new LegacyUserData(userCore ?? userLegacy);
+
+            if (this.User.ScreenName == null || this.User.Name == null)
+            {
+                throw new Exception($"Unknown user data: {userResult}");
+            }
+
             this.CreatedAt = DateTime.ParseExact(core.Value<string>("created_at"), "ddd MMM dd HH:mm:ss K yyyy", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
             this.FullText = core.Value<string>("full_text");
 
