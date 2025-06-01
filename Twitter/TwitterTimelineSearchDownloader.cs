@@ -101,26 +101,26 @@ namespace SNSDownloader.Twitter
                         {
                             if (tweets.Select(TwitterUtils.GetStatusUrl).All(output.Progressed.Contains))
                             {
-                                this.Log($"All progressed");
-                                break;
+                                if (t >= 2)
+                                {
+                                    this.Log($"All progressed");
+                                    break;
+                                }
+                                else
+                                {
+                                    t++;
+                                }
+
                             }
 
                         }
-                        else if (t >= 4)
+                        else if (t >= 2)
                         {
                             break;
                         }
                         else
                         {
                             t++;
-                        }
-
-                        if (tweets.Count > 0 && jtw == null)
-                        {
-                            fs = new FileStream(path, FileMode.Create);
-                            sw = new StreamWriter(fs, Program.UTF8WithoutBOM);
-                            jtw = new JsonTextWriter(sw) { Formatting = Formatting.Indented };
-                            jtw.WriteStartArray();
                         }
 
                         var added = 0;
@@ -131,20 +131,31 @@ namespace SNSDownloader.Twitter
 
                             if (!output.Progressed.Contains(url))
                             {
+                                if (jtw == null)
+                                {
+                                    fs = new FileStream(path, FileMode.Create);
+                                    sw = new StreamWriter(fs, Program.UTF8WithoutBOM);
+                                    jtw = new JsonTextWriter(sw) { Formatting = Formatting.Indented };
+                                    jtw.WriteStartArray();
+                                }
+
                                 jtw.WriteValue(url);
                                 added += 1;
+                                t = 0;
                             }
 
                         }
 
-                        jtw.Flush();
+                        if (jtw != null)
+                        {
+                            jtw.Flush();
+                        }
 
                         this.Log("========== Cursor ==========");
 
                         if (tweets.Count > 1)
                         {
                             this.Log($"Period: {tweets[0].CreatedAt.ToStandardString()} ~ {tweets[^1].CreatedAt.ToStandardString()}");
-                            t = 0;
                         }
 
                         totalCount += added;

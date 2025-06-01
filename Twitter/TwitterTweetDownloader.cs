@@ -263,11 +263,19 @@ namespace SNSDownloader.Twitter
                     var wrapped = JObject.Parse(t2);
                     var entities = wrapped.Value<JObject>("media_entities");
 
-                    foreach (var pair in entities)
+                    if (entities != null)
                     {
-                        tweet.Media.Add(TweetResultTweet.ParseMedia(pair.Value));
+                        foreach (var pair in entities)
+                        {
+                            tweet.Media.Add(TweetResultTweet.ParseMedia(pair.Value));
+                        }
+
                     }
 
+                }
+                else
+                {
+                    throw new Exception($"Unknown card type: {type2}");
                 }
 
             }
